@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes"/>
-<title>Health Tracker v3.6</title>
+<title>Health Tracker v3.7</title>
 <meta name="application-name" content="Health Tracker"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -90,14 +90,26 @@ function fbConnect(onStatus, cb){
       if(cb) cb(null, _fbUid);
       return;
     }
-    /* First time: sign in anonymously */
-    _fbAuth.signInAnonymously().then(function(cr){
-      _fbUid=cr.user.uid;
-      localStorage.setItem("ht3-fb-uid",_fbUid);
+    /* Sign in with Google */
+    var provider = new firebase.auth.GoogleAuthProvider();
+    _fbAuth.signInWithPopup(provider).then(function(cr){
+      _fbUid = cr.user.uid;
+      localStorage.setItem("ht3-fb-uid", _fbUid);
+      localStorage.setItem("ht3-fb-email", cr.user.email||"");
+      localStorage.setItem("ht3-fb-name", cr.user.displayName||"");
       setupConnection();
       onStatus("connected");
       if(cb) cb(null, _fbUid);
-    }).catch(function(e){ onStatus("error"); if(cb) cb(e); });
+    }).catch(function(e){
+      /* Fallback to anonymous if Google fails */
+      _fbAuth.signInAnonymously().then(function(cr){
+        _fbUid=cr.user.uid;
+        localStorage.setItem("ht3-fb-uid",_fbUid);
+        setupConnection();
+        onStatus("connected");
+        if(cb) cb(null, _fbUid);
+      }).catch(function(e2){ onStatus("error"); if(cb) cb(e2); });
+    });
   });
 }
 
@@ -595,7 +607,14 @@ function App(){
   /* ── Restore saved Firebase UID + auto-reconnect on visibility ── */
   useEffect(function(){
     var uid=localStorage.getItem("ht3-fb-uid");
-    if(uid){ _fbUid=uid; setFbUserId(uid); }
+    if(uid){
+      _fbUid=uid;
+      setFbUserId(uid);
+      /* Auto-connect silently on startup */
+      setTimeout(function(){
+        fbConnect(setFbStatus, function(){});
+      }, 1000);
+    }
     /* Auto-reconnect when page becomes visible again (screen unlock, tab switch) */
     function onVisible(){
       if(document.hidden) return;
@@ -1049,7 +1068,11 @@ function App(){
       React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",borderRadius:14,padding:18,marginBottom:12,color:"#fff"}},
         React.createElement("div",{style:{fontSize:13,opacity:.8,marginBottom:4}},new Date().toLocaleDateString("el-GR",{weekday:"long",day:"numeric",month:"long"})),
         React.createElement("div",{style:{fontSize:20,fontWeight:800}},
-          tot.calories<100?"Καλημέρα! 👋":"Καλή συνέχεια! 💪"
+          (function(){
+            var h = new Date().getHours();
+            var greet = h>=5&&h<12?"Καλημέρα! 🌅":h>=12&&h<17?"Καλησπέρα! ☀️":h>=17&&h<21?"Καλό απόγευμα! 🌆":"Καληνύχτα! 🌙";
+            return tot.calories>100?"Καλή συνέχεια! 💪":greet;
+          })()
         ),
         React.createElement("div",{style:{fontSize:13,opacity:.85,marginTop:2}},
           tot.calories>0?Math.round(tot.calories)+" kcal σήμερα":"Ξεκίνα καταγράφοντας τα γεύματά σου"
@@ -2447,67 +2470,39 @@ function App(){
         ),
         /* info when connected */
         uid?React.createElement("div",{style:{background:"#eff6ff",borderRadius:12,padding:12,marginBottom:16,fontSize:13,lineHeight:1.8}},
-          "Κάθε αλλαγή ανεβαίνει ",React.createElement("strong",null,"αυτόματα"),
-          " στο Firebase.",React.createElement("br"),
-          fbSyncedAt?React.createElement("div",{style:{fontSize:11,color:"#2563eb",marginTop:2}},"✓ Τελευταίο sync: "+fbSyncedAt.toLocaleTimeString("el-GR")):null,
-          React.createElement("div",{style:{marginTop:6}},"Device ID για νέα συσκευή:"),
-          React.createElement("code",{style:{background:"#e2e8f0",padding:"3px 8px",borderRadius:4,fontSize:11,display:"block",marginTop:4,wordBreak:"break-all"}},uid)
+          React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:6}},
+            React.createElement("span",{style:{fontSize:20}},"🔵"),
+            React.createElement("div",null,
+              React.createElement("div",{style:{fontWeight:700}},localStorage.getItem("ht3-fb-name")||"Συνδεδεμένος"),
+              React.createElement("div",{style:{fontSize:11,color:"#64748b"}},localStorage.getItem("ht3-fb-email")||uid.slice(0,12)+"…")
+            )
+          ),
+          "Κάθε αλλαγή ανεβαίνει ",React.createElement("strong",null,"αυτόματα"),React.createElement("br"),
+          fbSyncedAt?React.createElement("div",{style:{fontSize:11,color:"#2563eb",marginTop:2}},"✓ Τελευταίο sync: "+fbSyncedAt.toLocaleTimeString("el-GR")):null
         ):null,
         /* first time: no uid yet */
         !uid?React.createElement("div",null,
-          /* Option A: brand new - upload */
+          React.createElement("div",{style:{background:"#eff6ff",borderRadius:12,padding:14,marginBottom:12,fontSize:13,lineHeight:1.8}},
+            "Σύνδεση με ",React.createElement("strong",null,"Google account"),
+            " — αυτόματο sync σε κινητό & PC χωρίς Device ID."
+          ),
           React.createElement("button",{
             onClick:function(){
-              if(!confirm("Νέα σύνδεση; Τα τοπικά δεδομένα θα ανέβουν στο cloud.")) return;
               setFbSyncing(true);
-              doUpload(function(err){
+              fbConnect(setFbStatus, function(err, newUid){
                 setFbSyncing(false);
-                if(err) alert("Σφάλμα: "+err.message);
-                else{ setFbUserId(localStorage.getItem("ht3-fb-uid")||""); setFbSyncedAt(new Date()); setFbStatus("synced"); setShowSync(false); alert("✅ Συνδέθηκες! Δεδομένα ανέβηκαν."); }
+                if(err){ alert("Σφάλμα: "+err.message); return; }
+                setFbUserId(newUid||"");
+                doUpload(function(e2){
+                  setShowSync(false);
+                  alert("✅ Συνδέθηκες με Google! Δεδομένα ανέβηκαν.");
+                });
               });
             },
-            style:{background:fbSyncing?"#93c5fd":"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"12px 16px",fontSize:14,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:10,opacity:fbSyncing?0.7:1}
-          },fbSyncing?"⏳ Σύνδεση...":"🔌 Νέα σύνδεση (πρώτη φορά)"),
-          /* Option B: existing account - enter uid and download */
-          React.createElement("div",{style:{background:"#f8fafc",borderRadius:12,padding:14}},
-            React.createElement("div",{style:{fontSize:13,fontWeight:700,marginBottom:8}},"📱 Έχεις ήδη λογαριασμό σε άλλη συσκευή;"),
-            React.createElement("div",{style:{fontSize:12,color:"#64748b",marginBottom:8}},"Βάλε το Device ID της άλλης συσκευής:"),
-            React.createElement("div",{style:{display:"flex",gap:8}},
-              React.createElement("input",{id:"fbIdInputNew",style:{flex:1,border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 10px",fontSize:12},placeholder:"Device ID..."}),
-              React.createElement("button",{
-                onClick:function(){
-                  var v=document.getElementById("fbIdInputNew").value.trim();
-                  if(v.length<10){ alert("Βάλε έγκυρο Device ID"); return; }
-                  fbSetUid(v); setFbUserId(v);
-                  setFbSyncing(true);
-                  doDownload(function(err, count){
-                    setFbSyncing(false);
-                    if(err){ alert("Σφάλμα: "+err.message); return; }
-                    setFbStatus("synced"); setShowSync(false);
-                    alert("✅ Κατέβηκαν "+count+" εγγραφές!");
-                  });
-                },
-                style:{background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}
-              },fbSyncing?"⏳...":"Σύνδεση + Λήψη")
-            )
-          )
+            style:{background:fbSyncing?"#93c5fd":"#2563eb",color:"#fff",border:"none",borderRadius:12,padding:"14px 16px",fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:8}
+          },fbSyncing?"⏳ Σύνδεση...":"🔵 Σύνδεση με Google")
         ):null,
-        /* debug button */
-        React.createElement("div",{style:{borderTop:"1px solid #e2e8f0",paddingTop:12,marginBottom:12}},
-          React.createElement("button",{
-            onClick:function(){
-              var info = [
-                "exams: "+(JSON.parse(localStorage.getItem("ht3-exams")||"[]")).length,
-                "glucose: "+(JSON.parse(localStorage.getItem("ht3-glucose")||"[]")).length,
-                "meals: "+(JSON.parse(localStorage.getItem("ht3-meals")||"[]")).length,
-                "supps: "+(JSON.parse(localStorage.getItem("ht3-supps")||"[]")).length,
-                "foods: "+(JSON.parse(localStorage.getItem("ht3-foods")||"[]")).length,
-              ].join("\n");
-              alert("LocalStorage:\n"+info);
-            },
-            style:{background:"#f1f5f9",color:CLR.muted,border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,cursor:"pointer",width:"100%"}
-          },"🔍 Έλεγχος localStorage")
-        ),
+
         /* backup section */
         React.createElement("div",{style:{borderTop:"1px solid #e2e8f0",paddingTop:14}},
           React.createElement("div",{style:{fontWeight:700,fontSize:14,marginBottom:10}},"💾 Backup"),
@@ -2552,27 +2547,18 @@ function App(){
             )
           )
         ),
-        /* link new device */
-        uid?React.createElement("div",{style:{borderTop:"1px solid #e2e8f0",paddingTop:14}},
-          React.createElement("div",{style:{fontWeight:700,fontSize:14,marginBottom:8}},"🔗 Σύνδεση νέας συσκευής"),
-          React.createElement("div",{style:{display:"flex",gap:8}},
-            React.createElement("input",{id:"fbIdInput",style:{flex:1,border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 10px",fontSize:12},placeholder:"Device ID νέας συσκευής..."}),
-            React.createElement("button",{
-              onClick:function(){
-                var v=document.getElementById("fbIdInput").value.trim();
-                if(v.length<10){ alert("Βάλε έγκυρο Device ID"); return; }
-                fbSetUid(v); setFbUserId(v);
-                setFbSyncing(true);
-                doDownload(function(err, count){
-                  setFbSyncing(false);
-                  if(err){ alert("Σφάλμα: "+err.message); return; }
-                  setFbStatus("synced"); setShowSync(false);
-                  alert("✅ Κατέβηκαν "+count+" εγγραφές!");
-                });
-              },
-              style:{background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}
-            },fbSyncing?"⏳...":"Σύνδεση + Λήψη")
-          )
+        /* sign out option */
+        uid?React.createElement("div",{style:{borderTop:"1px solid #e2e8f0",paddingTop:14,textAlign:"center"}},
+          React.createElement("button",{
+            onClick:function(){
+              if(!confirm("Αποσύνδεση;")) return;
+              localStorage.removeItem("ht3-fb-uid");
+              localStorage.removeItem("ht3-fb-email");
+              localStorage.removeItem("ht3-fb-name");
+              _fbUid=null; setFbUserId(""); setFbStatus("offline"); setShowSync(false);
+            },
+            style:{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"8px 16px",fontSize:13,cursor:"pointer"}
+          },"Αποσύνδεση")
         ):null
       )
     );
@@ -2608,7 +2594,7 @@ function App(){
     React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",color:"#fff",padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50,boxShadow:"0 2px 8px rgba(37,99,235,.3)"}},
       React.createElement("span",{style:{fontSize:24}},"🏥"),
       React.createElement("div",{style:{flex:1}},
-        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.6")),
+        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.7")),
         React.createElement("div",{style:{fontSize:12,opacity:.8}},exams.length+" εξετάσεις · "+supps.length+" συμπλ.")
       ),
       alertCount>0?React.createElement("div",{style:{background:"#ef4444",color:"#fff",borderRadius:99,width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}},alertCount):null,
@@ -2851,7 +2837,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 /* ═══════════════════ SERVICE WORKER ═══════════════════ */
 if('serviceWorker' in navigator) {
   var swCode = [
-    "const CACHE='ht-v3-6';",
+    "const CACHE='ht-v3-7';",
     "const URLS=['/'];",
     "self.addEventListener('install',e=>{",
     "  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));",
