@@ -662,21 +662,22 @@ function App(){
         setFbSyncing(false);
         if(err2){ if(cb) cb(err2); return; }
         if(!data){ if(cb) cb(new Error("Δεν βρέθηκαν δεδομένα")); return; }
-        /* Write to localStorage synchronously */
-        var keys = {
-          exams:"ht3-exams", glucose:"ht3-glucose", ketones:"ht3-ketones",
-          supps:"ht3-supps", suppLog:"ht3-suppLog", foods:"ht3-foods",
-          meals:"ht3-meals", exercises:"ht3-exercises",
-          exTemplates:"ht3-exTemplates", settings:"ht3-settings"
-        };
+        /* Update React state AND localStorage */
+        _applying = true;
+        if(data.exams&&data.exams.length)     { lsSet(LS.exams,data.exams);         setExams(data.exams); }
+        if(data.glucose&&data.glucose.length) { lsSet(LS.glucose,data.glucose);     setGlucose(data.glucose); }
+        if(data.ketones&&data.ketones.length) { lsSet(LS.ketones,data.ketones);     setKetones(data.ketones); }
+        if(data.supps&&data.supps.length)     { lsSet(LS.supps,data.supps);         setSupps(data.supps); }
+        if(data.suppLog&&data.suppLog.length) { lsSet(LS.suppLog,data.suppLog);     setSuppLog(data.suppLog); }
+        if(data.foods&&data.foods.length)     { lsSet(LS.foods,data.foods);         setFoods(data.foods); }
+        if(data.meals&&data.meals.length)     { lsSet(LS.meals,data.meals);         setMeals(data.meals); }
+        if(data.exercises&&data.exercises.length){ lsSet(LS.exercises,data.exercises); setExercises(data.exercises); }
+        if(data.exTemplates&&data.exTemplates.length){ lsSet(LS.exTemplates,data.exTemplates); setExTemplates(data.exTemplates); }
+        if(data.settings)                     { lsSet(LS.settings,data.settings);   setSettings(data.settings); }
+        setTimeout(function(){ _applying=false; }, 3000);
         var count = 0;
-        Object.keys(keys).forEach(function(k){
-          if(data[k] !== undefined && data[k] !== null){
-            try{
-              localStorage.setItem(keys[k], JSON.stringify(data[k]));
-              if(Array.isArray(data[k])) count += data[k].length;
-            }catch(e){}
-          }
+        ["exams","glucose","ketones","supps","suppLog","foods","meals","exercises"].forEach(function(k){
+          if(data[k]&&data[k].length) count+=data[k].length;
         });
         if(cb) cb(null, count);
       });
@@ -2397,8 +2398,7 @@ function App(){
                     setFbSyncing(false);
                     if(err){ alert("Σφάλμα: "+err.message); return; }
                     setFbStatus("synced"); setShowSync(false);
-                    alert("✅ Κατέβηκαν "+count+" εγγραφές! Ανανέωση...");
-                    setTimeout(function(){ window.location.reload(); }, 300);
+                    alert("✅ Κατέβηκαν "+count+" εγγραφές!");
                   });
                 },
                 style:{background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}
@@ -2465,8 +2465,7 @@ function App(){
                   setFbSyncing(false);
                   if(err){ alert("Σφάλμα: "+err.message); return; }
                   setFbStatus("synced"); setShowSync(false);
-                  alert("✅ Κατέβηκαν "+count+" εγγραφές! Ανανέωση...");
-                  setTimeout(function(){ window.location.reload(); }, 300);
+                  alert("✅ Κατέβηκαν "+count+" εγγραφές!");
                 });
               },
               style:{background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}
