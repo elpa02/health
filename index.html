@@ -1151,7 +1151,11 @@ function App(){
     /* ── Add food to library ── */
     if(showAddFood||editFood){
       var ff=foodForm||emptyFoodForm();
-      function updF(k,v){ setFoodForm(Object.assign({},ff,{[k]:v})); }
+      function updF(k,v){
+        var n=Object.assign({},ff);
+        n[k]=v;
+        setFoodForm(n);
+      }
       return React.createElement("div",null,
         React.createElement(SectionTitle,{back:function(){setShowAddFood(false);setEditFood(null);setFoodForm(null);},title:editFood?"✏️ Επεξεργασία Τροφίμου":"➕ Νέο Τρόφιμο"}),
         React.createElement("div",{style:SI.card},
@@ -1198,7 +1202,11 @@ function App(){
     if(showAddMeal){
       var mf=mealForm||emptyMealForm();
       var mfItems=mf.items||[];
-      function updM(k,v){ setMealForm(Object.assign({},mf,{[k]:v})); }
+      function updM(k,v){
+        var n=Object.assign({},mf);
+        n[k]=v;
+        setMealForm(n);
+      }
       /* total macros of all current items */
       var mfTotals=mfItems.reduce(function(acc,item){
         var m=calcItemMacros(item); acc.calories+=m.calories; acc.protein+=m.protein; acc.carbs+=m.carbs; acc.fat+=m.fat; return acc;
@@ -1419,7 +1427,11 @@ function App(){
     /* Template editor */
     if(editExTpl){
       var tf=exTplForm||emptyExTplForm();
-      function updT(k,v){ setExTplForm(Object.assign({},tf,{[k]:v})); }
+      function updT(k,v){
+        var n=Object.assign({},tf);
+        n[k]=v;
+        setExTplForm(n);
+      }
       return React.createElement("div",null,
         React.createElement(SectionTitle,{back:function(){setEditExTpl(null);setExTplForm(null);setShowExLib(true);},title:tf.id?"✏️ Επεξεργασία Template":"➕ Νέο Template"}),
         React.createElement("div",{style:SI.card},
@@ -1469,7 +1481,11 @@ function App(){
     /* Add exercise */
     if(showAddEx){
       var ef=exForm||emptyExForm();
-      function updE(k,v){ setExForm(Object.assign({},ef,{[k]:v})); }
+      function updE(k,v){
+        var n=Object.assign({},ef);
+        n[k]=v;
+        setExForm(n);
+      }
       return React.createElement("div",null,
         React.createElement(SectionTitle,{back:function(){setShowAddEx(false);setExForm(null);},title:"🏃 Καταγραφή Άσκησης"}),
         React.createElement("div",{style:SI.card},
@@ -1570,7 +1586,11 @@ function App(){
 
     /* Add/Edit form */
     if(showAdd&&form){
-      function updF(k,v){ setForm(Object.assign({},form,{[k]:v})); }
+      function updF(k,v){
+        var n=Object.assign({},form);
+        n[k]=v;
+        setForm(n);
+      }
       return React.createElement("div",null,
         React.createElement(SectionTitle,{back:function(){setShowAdd(false);setForm(null);},title:form.id?"✏️ Επεξεργασία":(isGlu?"🩸 Νέα Μέτρηση Σακχάρου":"🔬 Νέα Μέτρηση Κετονών")}),
         React.createElement("div",{style:SI.card},
@@ -1695,7 +1715,11 @@ function App(){
     /* Add/Edit supp */
     if(showAddSupp||editSupp){
       var sf=suppForm||emptySuppForm();
-      function updS(k,v){ setSuppForm(Object.assign({},sf,{[k]:v})); }
+      function updS(k,v){
+        var n=Object.assign({},sf);
+        n[k]=v;
+        setSuppForm(n);
+      }
       function fld(lbl,key,ph,tp){
         return React.createElement(FormField,{label:lbl},React.createElement("input",{type:tp||"text",style:SI.inp,value:sf[key]||"",onChange:function(e){updS(key,e.target.value);},placeholder:ph||""}));
       }
@@ -2244,8 +2268,16 @@ function App(){
     var sf=settForm;
     var af=aiSettForm;
     if(!sf||!af) return null;
-    function updS(k,v){ setSettForm(Object.assign({},sf,{[k]:v})); }
-    function updA(k,v){ setAiSettForm(Object.assign({},af,{[k]:v})); }
+    function updS(k,v){
+          var n=Object.assign({},sf);
+          n[k]=v;
+          setSettForm(n);
+        }
+    function updA(k,v){
+          var n=Object.assign({},af);
+          n[k]=v;
+          setAiSettForm(n);
+        }
     function saveAll(){
       var s=Object.assign({},sf,{
         calorieGoal:parseInt(sf.calorieGoal)||2000,
