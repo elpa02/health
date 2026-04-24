@@ -46,19 +46,21 @@ function fbReady(){ return !!(_fbDb && _fbUid); }
 
 function fbLoad(cb){
   if(typeof firebase!=="undefined"){ cb(); return; }
+  /* Load scripts sequentially - firebase-app must load first */
   var urls=[
     "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js",
     "https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js",
     "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"
   ];
-  var done=0;
-  urls.forEach(function(u){
+  function loadNext(i){
+    if(i>=urls.length){ cb(); return; }
     var s=document.createElement("script");
-    s.src=u;
-    s.onload=function(){ done++; if(done===urls.length) cb(); };
-    s.onerror=function(){ cb(new Error("Αποτυχία φόρτωσης Firebase. Έλεγξε σύνδεση internet.")); };
+    s.src=urls[i];
+    s.onload=function(){ loadNext(i+1); };
+    s.onerror=function(){ cb(new Error("Αποτυχία φόρτωσης Firebase SDK.")); };
     document.head.appendChild(s);
-  });
+  }
+  loadNext(0);
 }
 
 function fbConnect(onStatus, cb){
@@ -2406,6 +2408,22 @@ function App(){
             )
           )
         ):null,
+        /* debug button */
+        React.createElement("div",{style:{borderTop:"1px solid #e2e8f0",paddingTop:12,marginBottom:12}},
+          React.createElement("button",{
+            onClick:function(){
+              var info = [
+                "exams: "+(JSON.parse(localStorage.getItem("ht3-exams")||"[]")).length,
+                "glucose: "+(JSON.parse(localStorage.getItem("ht3-glucose")||"[]")).length,
+                "meals: "+(JSON.parse(localStorage.getItem("ht3-meals")||"[]")).length,
+                "supps: "+(JSON.parse(localStorage.getItem("ht3-supps")||"[]")).length,
+                "foods: "+(JSON.parse(localStorage.getItem("ht3-foods")||"[]")).length,
+              ].join("\n");
+              alert("LocalStorage:\n"+info);
+            },
+            style:{background:"#f1f5f9",color:CLR.muted,border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,cursor:"pointer",width:"100%"}
+          },"🔍 Έλεγχος localStorage")
+        ),
         /* backup section */
         React.createElement("div",{style:{borderTop:"1px solid #e2e8f0",paddingTop:14}},
           React.createElement("div",{style:{fontWeight:700,fontSize:14,marginBottom:10}},"💾 Backup"),
