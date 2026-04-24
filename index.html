@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes"/>
-<title>Health Tracker v3.5</title>
+<title>Health Tracker v3.6</title>
 <meta name="application-name" content="Health Tracker"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -551,6 +551,7 @@ function App(){
   var [intakeTime, setIntakeTime] = useState(nowTime());
   var [intakeNotes, setIntakeNotes] = useState("");
   var [selTrendParam, setSelTrendParam] = useState("");
+  var [gluTrendCtx, setGluTrendCtx] = useState("all");
   var [fbStatus, setFbStatus] = useState("offline");
   var [fbUserId, setFbUserId] = useState(function(){ return localStorage.getItem("ht3-fb-uid")||""; });
   var [fbSyncing, setFbSyncing] = useState(false);
@@ -597,10 +598,16 @@ function App(){
     if(uid){ _fbUid=uid; setFbUserId(uid); }
     /* Auto-reconnect when page becomes visible again (screen unlock, tab switch) */
     function onVisible(){
-      if(!document.hidden && _fbUid && _fbDb){
+      if(document.hidden) return;
+      if(_fbUid && _fbDb){
         _fbDb.goOnline();
-      } else if(!document.hidden && _fbUid && !_fbDb){
-        /* SDK not loaded yet - reconnect fully */
+        /* Check connection after a short delay */
+        setTimeout(function(){
+          if(_fbDb) _fbDb.ref(".info/connected").once("value").then(function(s){
+            setFbStatus(s.val()?"synced":"offline");
+          });
+        }, 2000);
+      } else if(_fbUid && !_fbDb){
         fbConnect(setFbStatus, function(){});
       }
     }
@@ -664,23 +671,49 @@ function App(){
         setFbSyncing(false);
         if(err2){ if(cb) cb(err2); return; }
         if(!data){ if(cb) cb(new Error("Δεν βρέθηκαν δεδομένα")); return; }
-        /* Update React state AND localStorage */
+        /* MERGE cloud data with local data - keep all unique IDs */
         _applying = true;
-        if(data.exams&&data.exams.length)     { lsSet(LS.exams,data.exams);         setExams(data.exams); }
-        if(data.glucose&&data.glucose.length) { lsSet(LS.glucose,data.glucose);     setGlucose(data.glucose); }
-        if(data.ketones&&data.ketones.length) { lsSet(LS.ketones,data.ketones);     setKetones(data.ketones); }
-        if(data.supps&&data.supps.length)     { lsSet(LS.supps,data.supps);         setSupps(data.supps); }
-        if(data.suppLog&&data.suppLog.length) { lsSet(LS.suppLog,data.suppLog);     setSuppLog(data.suppLog); }
-        if(data.foods&&data.foods.length)     { lsSet(LS.foods,data.foods);         setFoods(data.foods); }
-        if(data.meals&&data.meals.length)     { lsSet(LS.meals,data.meals);         setMeals(data.meals); }
-        if(data.exercises&&data.exercises.length){ lsSet(LS.exercises,data.exercises); setExercises(data.exercises); }
-        if(data.exTemplates&&data.exTemplates.length){ lsSet(LS.exTemplates,data.exTemplates); setExTemplates(data.exTemplates); }
-        if(data.settings)                     { lsSet(LS.settings,data.settings);   setSettings(data.settings); }
-        setTimeout(function(){ _applying=false; }, 3000);
+        function mergeArr(local, remote){
+          if(!remote||!remote.length) return local;
+          if(!local||!local.length) return remote;
+          var ids = {};
+          local.forEach(function(x){ if(x&&x.id) ids[x.id]=x; });
+          remote.forEach(function(x){ if(x&&x.id&&!ids[x.id]) ids[x.id]=x; });
+          return Object.values(ids);
+        }
+        var merged = {
+          exams:       mergeArr(exams,       data.exams),
+          glucose:     mergeArr(glucose,     data.glucose),
+          ketones:     mergeArr(ketones,     data.ketones),
+          supps:       mergeArr(supps,       data.supps),
+          suppLog:     mergeArr(suppLog,     data.suppLog),
+          foods:       mergeArr(foods,       data.foods),
+          meals:       mergeArr(meals,       data.meals),
+          exercises:   mergeArr(exercises,   data.exercises),
+          exTemplates: mergeArr(exTemplates, data.exTemplates),
+        };
+        lsSet(LS.exams,merged.exams);           setExams(merged.exams);
+        lsSet(LS.glucose,merged.glucose);       setGlucose(merged.glucose);
+        lsSet(LS.ketones,merged.ketones);       setKetones(merged.ketones);
+        lsSet(LS.supps,merged.supps);           setSupps(merged.supps);
+        lsSet(LS.suppLog,merged.suppLog);       setSuppLog(merged.suppLog);
+        lsSet(LS.foods,merged.foods);           setFoods(merged.foods);
+        lsSet(LS.meals,merged.meals);           setMeals(merged.meals);
+        lsSet(LS.exercises,merged.exercises);   setExercises(merged.exercises);
+        lsSet(LS.exTemplates,merged.exTemplates); setExTemplates(merged.exTemplates);
+        if(data.settings){ lsSet(LS.settings,data.settings); setSettings(data.settings); }
+        /* Push merged data back to Firebase so cloud is also updated */
+        setTimeout(function(){
+          _applying=false;
+          fbPush({
+            exams:merged.exams, glucose:merged.glucose, ketones:merged.ketones,
+            supps:merged.supps, suppLog:merged.suppLog, foods:merged.foods,
+            meals:merged.meals, exercises:merged.exercises, exTemplates:merged.exTemplates,
+            settings:data.settings||{}
+          }, function(){});
+        }, 1000);
         var count = 0;
-        ["exams","glucose","ketones","supps","suppLog","foods","meals","exercises"].forEach(function(k){
-          if(data[k]&&data[k].length) count+=data[k].length;
-        });
+        Object.values(merged).forEach(function(arr){ if(arr&&arr.length) count+=arr.length; });
         if(cb) cb(null, count);
       });
     });
@@ -837,10 +870,11 @@ function App(){
   function glucoseForDate(d){ return glucose.filter(function(g){return g.date===d;}).sort(function(a,b){return a.time.localeCompare(b.time);}); }
   function ketonesForDate(d){ return ketones.filter(function(k){return k.date===d;}).sort(function(a,b){return a.time.localeCompare(b.time);}); }
   function gluColor(v){ if(v<70) return CLR.err; if(v<=140) return CLR.ok; if(v<=180) return CLR.warn; return CLR.err; }
-  function gluTrendData(){
+  function gluTrendData(ctx){
+    var filtered = ctx&&ctx!=="all" ? glucose.filter(function(g){return g.context===ctx;}) : glucose;
     var by={};
-    glucose.forEach(function(g){ if(!by[g.date]) by[g.date]=[]; by[g.date].push(g.value); });
-    return Object.keys(by).sort().slice(-60).map(function(d){
+    filtered.forEach(function(g){ if(!by[g.date]) by[g.date]=[]; by[g.date].push(g.value); });
+    return Object.keys(by).sort().slice(-90).map(function(d){
       var vs=by[d]; return {label:fmtShort(d),value:Math.round(vs.reduce(function(s,v){return s+v;},0)/vs.length),rawDate:d};
     });
   }
@@ -1257,31 +1291,34 @@ function App(){
               mealFoodPickerOpen?React.createElement("div",{
                 style:{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,maxHeight:220,overflowY:"auto",marginBottom:8,boxShadow:"0 4px 12px rgba(0,0,0,0.1)"}
               },
-                (function(){
-                  var sorted = [].concat(foods).sort(function(a,b){return a.name.localeCompare(b,"el");});
-                  var filtered = mealFoodSearch
-                    ? sorted.filter(function(f){return f.name.toLowerCase().includes(mealFoodSearch.toLowerCase());})
-                    : sorted;
-                  if(filtered.length===0) return React.createElement("div",{style:{padding:"12px 14px",color:CLR.muted,fontSize:13}},"Δεν βρέθηκε τρόφιμο");
-                  return filtered.map(function(f){
-                    return React.createElement("div",{
-                      key:f.id,
-                      onClick:function(){
-                        /* Add directly with default qty 100g */
-                        var newItems=[].concat(mfItems,[{foodId:f.id,qty:100}]);
-                        updM("items",newItems);
-                        setMealFoodSearch("");
-                        setMealFoodPickerOpen(false);
+  (function(){
+                  try {
+                    var sorted = [].concat(foods).sort(function(a,b){
+                      return (a.name||"").localeCompare(b.name||"","el");
+                    });
+                    var filtered = mealFoodSearch
+                      ? sorted.filter(function(f){return (f.name||"").toLowerCase().includes(mealFoodSearch.toLowerCase());})
+                      : sorted;
+                    if(!filtered.length) return React.createElement("div",{style:{padding:"12px 14px",color:CLR.muted,fontSize:13}},"Δεν βρέθηκε τρόφιμο");
+                    return filtered.map(function(f){
+                      return React.createElement("div",{
+                        key:f.id,
+                        onClick:function(){
+                          var newItems=[].concat(mfItems,[{foodId:f.id,qty:100}]);
+                          updM("items",newItems);
+                          setMealFoodSearch("");
+                          setMealFoodPickerOpen(false);
+                        },
+                        style:{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}
                       },
-                      style:{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}
-                    },
-                      React.createElement("div",null,
-                        React.createElement("div",{style:{fontWeight:600,fontSize:13}},f.name),
-                        React.createElement("div",{style:{fontSize:11,color:CLR.muted}},f.calories+" kcal · P:"+f.protein+"g · C:"+f.carbs+"g · F:"+f.fat+"g")
-                      ),
-                      React.createElement("span",{style:{color:CLR.primary,fontSize:18,fontWeight:700}},"+")
-                    );
-                  });
+                        React.createElement("div",null,
+                          React.createElement("div",{style:{fontWeight:600,fontSize:13}},f.name||""),
+                          React.createElement("div",{style:{fontSize:11,color:CLR.muted}},(f.calories||0)+" kcal · P:"+(f.protein||0)+"g · C:"+(f.carbs||0)+"g · F:"+(f.fat||0)+"g")
+                        ),
+                        React.createElement("span",{style:{color:CLR.primary,fontSize:18,fontWeight:700}},"+")
+                      );
+                    });
+                  } catch(e) { return React.createElement("div",{style:{padding:12,color:CLR.err,fontSize:13}},"Σφάλμα: "+e.message); }
                 })()
               ):null
             )
@@ -2147,11 +2184,26 @@ function App(){
     return React.createElement("div",null,
       React.createElement("div",{style:{fontSize:17,fontWeight:700,marginBottom:16}},"📈 Τάσεις"),
       /* Glucose trend */
-      sd.length>0?React.createElement("div",{style:SI.card},
-        React.createElement("div",{style:{fontWeight:700,color:CLR.sugar,marginBottom:4}},"🩸 Σάκχαρο (ημερήσιος μ.ο.)"),
-        React.createElement("div",{style:{color:CLR.muted,fontSize:12,marginBottom:12}},sd.length+" ημέρες δεδομένων"),
-        sd.length>1?React.createElement(LineChartCJ,{data:sd,color:CLR.sugar,fill:true,height:200,refMin:70,refMax:140}):
-          React.createElement("div",{style:{color:CLR.muted,textAlign:"center",padding:16,fontSize:13}},"Χρειάζονται δεδομένα από 2+ ημέρες")
+      glucose.length>0?React.createElement("div",{style:SI.card},
+        React.createElement("div",{style:{fontWeight:700,color:CLR.sugar,marginBottom:8}},"🩸 Σάκχαρο"),
+        /* Context filter buttons */
+        React.createElement("div",{style:{display:"flex",gap:6,overflowX:"auto",paddingBottom:6,marginBottom:10,WebkitOverflowScrolling:"touch"}},
+          [{k:"all",l:"Όλες"},{k:"fasting",l:"🌙 Νηστικός"},{k:"post1h",l:"🍽 1ώρα"},{k:"post2h",l:"🍽 2ώρες"},{k:"pre_exercise",l:"🏃 Προ"},{k:"post_exercise",l:"🏃 Μετά"}]
+          .map(function(opt){
+            var active=gluTrendCtx===opt.k;
+            var cnt=opt.k==="all"?glucose.length:glucose.filter(function(g){return g.context===opt.k;}).length;
+            if(cnt===0&&opt.k!=="all") return null;
+            return React.createElement("button",{key:opt.k,
+              onClick:function(){setGluTrendCtx(opt.k);},
+              style:{flexShrink:0,background:active?CLR.sugar:"#fff",color:active?"#fff":CLR.text,border:"1px solid "+(active?CLR.sugar:CLR.border),borderRadius:99,padding:"5px 12px",fontSize:12,cursor:"pointer",fontWeight:active?700:400,whiteSpace:"nowrap"}
+            },opt.l+" ("+cnt+")");
+          })
+        ),
+        (function(){
+          var sd=gluTrendData(gluTrendCtx);
+          return sd.length>1?React.createElement(LineChartCJ,{data:sd,color:CLR.sugar,fill:true,height:200,refMin:70,refMax:140}):
+            React.createElement("div",{style:{color:CLR.muted,textAlign:"center",padding:16,fontSize:13}},"Χρειάζονται δεδομένα από 2+ ημέρες για αυτό το φίλτρο");
+        })()
       ):null,
       /* Ketones trend */
       ktd.length>1?React.createElement("div",{style:SI.card},
@@ -2524,7 +2576,7 @@ function App(){
     React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",color:"#fff",padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50,boxShadow:"0 2px 8px rgba(37,99,235,.3)"}},
       React.createElement("span",{style:{fontSize:24}},"🏥"),
       React.createElement("div",{style:{flex:1}},
-        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.5")),
+        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.6")),
         React.createElement("div",{style:{fontSize:12,opacity:.8}},exams.length+" εξετάσεις · "+supps.length+" συμπλ.")
       ),
       alertCount>0?React.createElement("div",{style:{background:"#ef4444",color:"#fff",borderRadius:99,width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}},alertCount):null,
@@ -2767,7 +2819,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 /* ═══════════════════ SERVICE WORKER ═══════════════════ */
 if('serviceWorker' in navigator) {
   var swCode = [
-    "const CACHE='ht-v3-5';",
+    "const CACHE='ht-v3-6';",
     "const URLS=['/'];",
     "self.addEventListener('install',e=>{",
     "  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));",
