@@ -589,10 +589,21 @@ function App(){
   /* ── Init built-in foods on first run ── */
   useEffect(function(){ initFoods(foods, persistFoods); }, []);
 
-  /* ── Restore saved Firebase UID (no SDK load) ── */
+  /* ── Restore saved Firebase UID + auto-reconnect on visibility ── */
   useEffect(function(){
     var uid=localStorage.getItem("ht3-fb-uid");
     if(uid){ _fbUid=uid; setFbUserId(uid); }
+    /* Auto-reconnect when page becomes visible again (screen unlock, tab switch) */
+    function onVisible(){
+      if(!document.hidden && _fbUid && _fbDb){
+        _fbDb.goOnline();
+      } else if(!document.hidden && _fbUid && !_fbDb){
+        /* SDK not loaded yet - reconnect fully */
+        fbConnect(setFbStatus, function(){});
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return function(){ document.removeEventListener("visibilitychange", onVisible); };
   }, []);
 
   /* ── Android back button ── */
@@ -634,18 +645,20 @@ function App(){
   var _applying = false;
   function applySnapshot(d){
     if(!d) return;
-    _applying = true;
-    if(d.exams)        persistExams(d.exams);
-    if(d.glucose)      persistGlucose(d.glucose);
-    if(d.ketones)      persistKetones(d.ketones);
-    if(d.supps)        persistSupps(d.supps);
-    if(d.suppLog)      persistSuppLog(d.suppLog);
-    if(d.foods&&d.foods.length) persistFoods(d.foods);
-    if(d.meals)        persistMeals(d.meals);
-    if(d.exercises)    persistExercises(d.exercises);
-    if(d.exTemplates&&d.exTemplates.length) persistExTemplates(d.exTemplates);
-    if(d.settings)     persistSettings(d.settings);
-    setTimeout(function(){ _applying = false; }, 2000);
+    /* Write directly to localStorage first (no React state) */
+    var keys = {
+      exams:"ht3-exams", glucose:"ht3-glucose", ketones:"ht3-ketones",
+      supps:"ht3-supps", suppLog:"ht3-suppLog", foods:"ht3-foods",
+      meals:"ht3-meals", exercises:"ht3-exercises", exTemplates:"ht3-exTemplates",
+      settings:"ht3-settings"
+    };
+    Object.keys(keys).forEach(function(k){
+      if(d[k] !== undefined && d[k] !== null){
+        try{ localStorage.setItem(keys[k], JSON.stringify(d[k])); }catch(e){}
+      }
+    });
+    /* Then reload page to pick up new localStorage data */
+    window.location.reload();
   }
   function doUpload(cb){
     setFbSyncing(true);
