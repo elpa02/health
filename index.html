@@ -643,23 +643,7 @@ function App(){
       foods:foods,meals:meals,exercises:exercises,exTemplates:exTemplates,settings:settings};
   }
   var _applying = false;
-  function applySnapshot(d){
-    if(!d) return;
-    /* Write directly to localStorage first (no React state) */
-    var keys = {
-      exams:"ht3-exams", glucose:"ht3-glucose", ketones:"ht3-ketones",
-      supps:"ht3-supps", suppLog:"ht3-suppLog", foods:"ht3-foods",
-      meals:"ht3-meals", exercises:"ht3-exercises", exTemplates:"ht3-exTemplates",
-      settings:"ht3-settings"
-    };
-    Object.keys(keys).forEach(function(k){
-      if(d[k] !== undefined && d[k] !== null){
-        try{ localStorage.setItem(keys[k], JSON.stringify(d[k])); }catch(e){}
-      }
-    });
-    /* Then reload page to pick up new localStorage data */
-    window.location.reload();
-  }
+  function applySnapshot(d){ /* handled in doDownload */ }
   function doUpload(cb){
     setFbSyncing(true);
     fbConnect(setFbStatus, function(err){
@@ -676,8 +660,25 @@ function App(){
       if(err){ setFbSyncing(false); if(cb) cb(err); return; }
       fbPull(function(err2,data){
         setFbSyncing(false);
-        if(!err2) applySnapshot(data);
-        if(cb) cb(err2);
+        if(err2){ if(cb) cb(err2); return; }
+        if(!data){ if(cb) cb(new Error("Δεν βρέθηκαν δεδομένα")); return; }
+        /* Write to localStorage synchronously */
+        var keys = {
+          exams:"ht3-exams", glucose:"ht3-glucose", ketones:"ht3-ketones",
+          supps:"ht3-supps", suppLog:"ht3-suppLog", foods:"ht3-foods",
+          meals:"ht3-meals", exercises:"ht3-exercises",
+          exTemplates:"ht3-exTemplates", settings:"ht3-settings"
+        };
+        var count = 0;
+        Object.keys(keys).forEach(function(k){
+          if(data[k] !== undefined && data[k] !== null){
+            try{
+              localStorage.setItem(keys[k], JSON.stringify(data[k]));
+              if(Array.isArray(data[k])) count += data[k].length;
+            }catch(e){}
+          }
+        });
+        if(cb) cb(null, count);
       });
     });
   }
@@ -2392,10 +2393,12 @@ function App(){
                   if(v.length<10){ alert("Βάλε έγκυρο Device ID"); return; }
                   fbSetUid(v); setFbUserId(v);
                   setFbSyncing(true);
-                  doDownload(function(err){
+                  doDownload(function(err, count){
                     setFbSyncing(false);
-                    if(err) alert("Σφάλμα: "+err.message);
-                    else{ setShowSync(false); alert("✅ Συνδέθηκες! Δεδομένα κατέβηκαν."); }
+                    if(err){ alert("Σφάλμα: "+err.message); return; }
+                    setFbStatus("synced"); setShowSync(false);
+                    alert("✅ Κατέβηκαν "+count+" εγγραφές! Ανανέωση...");
+                    setTimeout(function(){ window.location.reload(); }, 300);
                   });
                 },
                 style:{background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}
@@ -2458,10 +2461,12 @@ function App(){
                 if(v.length<10){ alert("Βάλε έγκυρο Device ID"); return; }
                 fbSetUid(v); setFbUserId(v);
                 setFbSyncing(true);
-                doDownload(function(err){
+                doDownload(function(err, count){
                   setFbSyncing(false);
-                  if(err) alert("Σφάλμα: "+err.message);
-                  else{ setFbSyncedAt(new Date()); setFbStatus("synced"); setShowSync(false); alert("✅ Συνδέθηκες! Τα δεδομένα κατέβηκαν."); }
+                  if(err){ alert("Σφάλμα: "+err.message); return; }
+                  setFbStatus("synced"); setShowSync(false);
+                  alert("✅ Κατέβηκαν "+count+" εγγραφές! Ανανέωση...");
+                  setTimeout(function(){ window.location.reload(); }, 300);
                 });
               },
               style:{background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}
