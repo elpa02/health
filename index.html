@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes"/>
-<title>Health Tracker v3.8.4</title>
+<title>Health Tracker v3.8.5</title>
 <meta name="application-name" content="Health Tracker"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -2705,9 +2705,9 @@ function App(){
                 if(data.foods&&data.foods.length)        { lsSet(LS.foods,data.foods);           setFoods(data.foods); }
                 if(data.settings)                        { lsSet(LS.settings,data.settings);     setSettings(data.settings); }
                 setFbStatus("synced"); setFbSyncedAt(new Date());
-                setTimeout(function(){ _applying=false; }, 1000);
-                setShowSync(false);
+                setTimeout(function(){ _applying=false; }, 500);
                 alert("✅ Κατέβηκαν τα δεδομένα!");
+                setTimeout(function(){ window.location.reload(); }, 300);
               });
             },
             style:{background:"#eff6ff",color:"#2563eb",border:"2px solid #dbeafe",borderRadius:12,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:10}
@@ -2800,7 +2800,7 @@ function App(){
     React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",color:"#fff",padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50,boxShadow:"0 2px 8px rgba(37,99,235,.3)"}},
       React.createElement("span",{style:{fontSize:24}},"🏥"),
       React.createElement("div",{style:{flex:1}},
-        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.4")),
+        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.5")),
         React.createElement("div",{style:{fontSize:12,opacity:.8}},exams.length+" εξετάσεις · "+supps.length+" συμπλ.")
       ),
       alertCount>0?React.createElement("div",{style:{background:"#ef4444",color:"#fff",borderRadius:99,width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}},alertCount):null,
@@ -3043,7 +3043,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 /* ═══════════════════ SERVICE WORKER ═══════════════════ */
 if('serviceWorker' in navigator) {
   var swCode = [
-    "const CACHE='ht-v3-8-4';",
+    "const CACHE='ht-v3-8-5';",
     "const URLS=['/'];",
     "self.addEventListener('install',e=>{",
     "  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));",
