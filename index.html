@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes"/>
-<title>Health Tracker v3.9.2</title>
+<title>Health Tracker v3.9.3</title>
 <meta name="application-name" content="Health Tracker"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -1087,6 +1087,12 @@ function App(){
     var spd=parseFloat(s.servingsPerDay)||1;
     var daysLeft=spd>0?Math.floor(remaining/spd):0;
     return {total:total,used:Math.round(used),remaining:Math.round(remaining),pct:pct,daysLeft:daysLeft};
+  }
+  function totalMonthlyCost(){
+    return supps.reduce(function(sum,s){
+      var info=suppStockInfo(s);
+      return sum+info.costPerMonth;
+    },0);
   }
   function logSuppIntake(suppId, servings, date, time, notes){
     var entry={id:genId(),suppId:suppId,servings:parseFloat(servings)||1,date:date||today(),time:time||nowTime(),notes:notes||""};
@@ -2944,7 +2950,7 @@ function App(){
     React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",color:"#fff",padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50,boxShadow:"0 2px 8px rgba(37,99,235,.3)"}},
       React.createElement("span",{style:{fontSize:24}},"🏥"),
       React.createElement("div",{style:{flex:1}},
-        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.9.2")),
+        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.9.3")),
         React.createElement("div",{style:{fontSize:12,opacity:.8}},exams.length+" εξετάσεις · "+supps.length+" συμπλ.")
       ),
       alertCount>0?React.createElement("div",{style:{background:"#ef4444",color:"#fff",borderRadius:99,width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}},alertCount):null,
@@ -3196,7 +3202,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 /* ═══════════════════ SERVICE WORKER ═══════════════════ */
 if('serviceWorker' in navigator) {
   var swCode = [
-    "const CACHE='ht-v3-9-2';",
+    "const CACHE='ht-v3-9-3';",
     "const URLS=['/'];",
     "self.addEventListener('install',e=>{",
     "  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));",
