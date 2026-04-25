@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes"/>
-<title>Health Tracker v3.8.1</title>
+<title>Health Tracker v3.8.2</title>
 <meta name="application-name" content="Health Tracker"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -685,23 +685,45 @@ function App(){
     if(uid){
       _fbUid=uid;
       setFbUserId(uid);
-      /* Auto-connect silently on startup + start listeners */
+      /* Auto-connect on startup: pull latest + start real-time listeners */
       setTimeout(function(){
         fbConnect(setFbStatus, function(err){
           if(err) return;
+          /* Pull latest data from Firebase on every startup */
+          fbPullAll(function(err2, data){
+            if(err2||!data) return;
+            _applying=true;
+            if(data.exams&&data.exams.length)       { lsSet(LS.exams,data.exams);           setExams(data.exams); }
+            if(data.glucose&&data.glucose.length)   { lsSet(LS.glucose,data.glucose);       setGlucose(data.glucose); }
+            if(data.ketones&&data.ketones.length)   { lsSet(LS.ketones,data.ketones);       setKetones(data.ketones); }
+            if(data.supps&&data.supps.length)       { lsSet(LS.supps,data.supps);           setSupps(data.supps); }
+            if(data.suppLog&&data.suppLog.length)   { lsSet(LS.suppLog,data.suppLog);       setSuppLog(data.suppLog); }
+            if(data.meals&&data.meals.length)       { lsSet(LS.meals,data.meals);           setMeals(data.meals); }
+            if(data.exercises&&data.exercises.length){ lsSet(LS.exercises,data.exercises); setExercises(data.exercises); }
+            if(data.foods&&data.foods.length)       { lsSet(LS.foods,data.foods);           setFoods(data.foods); }
+            if(data.settings)                       { lsSet(LS.settings,data.settings);     setSettings(data.settings); }
+            if(window._fbSetStatus) window._fbSetStatus("synced");
+            if(window._fbSetSyncedAt) window._fbSetSyncedAt(new Date());
+            setTimeout(function(){ _applying=false; }, 1000);
+          });
+          /* Start real-time listeners for ongoing changes */
           fbListenAll(function(key, arr){
             if(_applying) return;
             _applying=true;
             var setters={
-              exams:function(a){lsSet(LS.exams,a);setExams(a);},
-              glucose:function(a){lsSet(LS.glucose,a);setGlucose(a);},
-              ketones:function(a){lsSet(LS.ketones,a);setKetones(a);},
-              supps:function(a){lsSet(LS.supps,a);setSupps(a);},
-              suppLog:function(a){lsSet(LS.suppLog,a);setSuppLog(a);},
-              meals:function(a){lsSet(LS.meals,a);setMeals(a);},
-              exercises:function(a){lsSet(LS.exercises,a);setExercises(a);},
+              exams:     function(a){ lsSet(LS.exams,a);     setExams(a); },
+              glucose:   function(a){ lsSet(LS.glucose,a);   setGlucose(a); },
+              ketones:   function(a){ lsSet(LS.ketones,a);   setKetones(a); },
+              supps:     function(a){ lsSet(LS.supps,a);     setSupps(a); },
+              suppLog:   function(a){ lsSet(LS.suppLog,a);   setSuppLog(a); },
+              meals:     function(a){ lsSet(LS.meals,a);     setMeals(a); },
+              exercises: function(a){ lsSet(LS.exercises,a); setExercises(a); },
             };
-            if(setters[key]){ setters[key](arr); if(window._fbSetStatus) window._fbSetStatus("synced"); }
+            if(setters[key]){
+              setters[key](arr);
+              if(window._fbSetStatus) window._fbSetStatus("synced");
+              if(window._fbSetSyncedAt) window._fbSetSyncedAt(new Date());
+            }
             setTimeout(function(){ _applying=false; }, 500);
           });
         });
@@ -2730,7 +2752,7 @@ function App(){
     React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",color:"#fff",padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50,boxShadow:"0 2px 8px rgba(37,99,235,.3)"}},
       React.createElement("span",{style:{fontSize:24}},"🏥"),
       React.createElement("div",{style:{flex:1}},
-        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.1")),
+        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.2")),
         React.createElement("div",{style:{fontSize:12,opacity:.8}},exams.length+" εξετάσεις · "+supps.length+" συμπλ.")
       ),
       alertCount>0?React.createElement("div",{style:{background:"#ef4444",color:"#fff",borderRadius:99,width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}},alertCount):null,
@@ -2973,7 +2995,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 /* ═══════════════════ SERVICE WORKER ═══════════════════ */
 if('serviceWorker' in navigator) {
   var swCode = [
-    "const CACHE='ht-v3-8-1';",
+    "const CACHE='ht-v3-8-2';",
     "const URLS=['/'];",
     "self.addEventListener('install',e=>{",
     "  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));",
