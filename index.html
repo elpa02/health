@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes"/>
-<title>Health Tracker v3.7</title>
+<title>Health Tracker v3.7.1</title>
 <meta name="application-name" content="Health Tracker"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -75,8 +75,16 @@ function fbConnect(onStatus, cb){
     function setupConnection(){
       /* Listen to connection state */
       _fbDb.ref(".info/connected").on("value",function(s){
-        if(s.val()){ fbFlushQueue(); /* don't downgrade synced→connected */ }
+        if(s.val()){ fbFlushQueue(); }
         else{ onStatus("offline"); }
+      });
+      /* Real-time listener: when another device changes data, update local */
+      _fbDb.ref("users/"+_fbUid).on("value", function(snap){
+        if(_applying) return; /* skip if WE are writing */
+        var data = snap.val();
+        if(!data) return;
+        if(window._fbApplyRemote) window._fbApplyRemote(data);
+        onStatus("synced");
       });
       /* Re-connect when tab becomes visible */
       document.addEventListener("visibilitychange",function(){
@@ -660,6 +668,29 @@ function App(){
   /* Expose setFbSyncedAt globally for fbAutoSync */
   window._fbSetSyncedAt = setFbSyncedAt;
   window._fbSetStatus = setFbStatus;
+
+  /* Real-time remote update handler */
+  window._fbApplyRemote = function(data){
+    if(!data) return;
+    _applying = true;
+    function mergeArr(local, remote){
+      if(!remote||!remote.length) return local;
+      if(!local||!local.length) return remote;
+      var ids = {};
+      local.forEach(function(x){ if(x&&x.id) ids[x.id]=x; });
+      remote.forEach(function(x){ if(x&&x.id) ids[x.id]=x; }); /* remote wins for same ID */
+      return Object.values(ids);
+    }
+    if(data.exams)     { var m=mergeArr(exams,data.exams);         lsSet(LS.exams,m);         setExams(m); }
+    if(data.glucose)   { var m=mergeArr(glucose,data.glucose);     lsSet(LS.glucose,m);       setGlucose(m); }
+    if(data.ketones)   { var m=mergeArr(ketones,data.ketones);     lsSet(LS.ketones,m);       setKetones(m); }
+    if(data.supps)     { var m=mergeArr(supps,data.supps);         lsSet(LS.supps,m);         setSupps(m); }
+    if(data.suppLog)   { var m=mergeArr(suppLog,data.suppLog);     lsSet(LS.suppLog,m);       setSuppLog(m); }
+    if(data.meals)     { var m=mergeArr(meals,data.meals);         lsSet(LS.meals,m);         setMeals(m); }
+    if(data.exercises) { var m=mergeArr(exercises,data.exercises); lsSet(LS.exercises,m);     setExercises(m); }
+    if(data.foods&&data.foods.length){ lsSet(LS.foods,data.foods); setFoods(data.foods); }
+    setTimeout(function(){ _applying=false; }, 2000);
+  };
 
   function changeLang(l){
     LANG=l; lsSet("ht3-lang",l); setAppLang(l);
@@ -2594,7 +2625,7 @@ function App(){
     React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",color:"#fff",padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50,boxShadow:"0 2px 8px rgba(37,99,235,.3)"}},
       React.createElement("span",{style:{fontSize:24}},"🏥"),
       React.createElement("div",{style:{flex:1}},
-        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.7")),
+        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.7.1")),
         React.createElement("div",{style:{fontSize:12,opacity:.8}},exams.length+" εξετάσεις · "+supps.length+" συμπλ.")
       ),
       alertCount>0?React.createElement("div",{style:{background:"#ef4444",color:"#fff",borderRadius:99,width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}},alertCount):null,
@@ -2837,7 +2868,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 /* ═══════════════════ SERVICE WORKER ═══════════════════ */
 if('serviceWorker' in navigator) {
   var swCode = [
-    "const CACHE='ht-v3-7';",
+    "const CACHE='ht-v3-7-1';",
     "const URLS=['/'];",
     "self.addEventListener('install',e=>{",
     "  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));",
