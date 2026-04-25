@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes"/>
-<title>Health Tracker v3.8.6</title>
+<title>Health Tracker v3.8.7</title>
 <meta name="application-name" content="Health Tracker"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -165,6 +165,19 @@ function fbConnect(onStatus, cb){
       localStorage.setItem("ht3-fb-email",cr.user.email||"");
       localStorage.setItem("ht3-fb-name",cr.user.displayName||"");
       afterAuth();
+      /* Auto-pull data after Sign-In and reload */
+      setTimeout(function(){
+        fbPullAll(function(err,data){
+          if(err||!data) return;
+          var lsKeys={exams:"ht3-exams",glucose:"ht3-glucose",ketones:"ht3-ketones",
+            supps:"ht3-supps",suppLog:"ht3-suppLog",foods:"ht3-foods",
+            meals:"ht3-meals",exercises:"ht3-exercises",exTemplates:"ht3-exTemplates",settings:"ht3-settings"};
+          Object.keys(lsKeys).forEach(function(k){
+            if(data[k]!==undefined) try{localStorage.setItem(lsKeys[k],JSON.stringify(data[k]));}catch(e){}
+          });
+          window.location.reload();
+        });
+      }, 800);
     }).catch(function(){
       /* Fallback: anonymous */
       _fbAuth.signInAnonymously().then(function(cr){
@@ -2807,7 +2820,7 @@ function App(){
     React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",color:"#fff",padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50,boxShadow:"0 2px 8px rgba(37,99,235,.3)"}},
       React.createElement("span",{style:{fontSize:24}},"🏥"),
       React.createElement("div",{style:{flex:1}},
-        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.6")),
+        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.7")),
         React.createElement("div",{style:{fontSize:12,opacity:.8}},exams.length+" εξετάσεις · "+supps.length+" συμπλ.")
       ),
       alertCount>0?React.createElement("div",{style:{background:"#ef4444",color:"#fff",borderRadius:99,width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}},alertCount):null,
@@ -3050,7 +3063,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 /* ═══════════════════ SERVICE WORKER ═══════════════════ */
 if('serviceWorker' in navigator) {
   var swCode = [
-    "const CACHE='ht-v3-8-6';",
+    "const CACHE='ht-v3-8-7';",
     "const URLS=['/'];",
     "self.addEventListener('install',e=>{",
     "  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));",
