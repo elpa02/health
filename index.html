@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes"/>
-<title>Health Tracker v3.7.1</title>
+<title>Health Tracker v3.8.1</title>
 <meta name="application-name" content="Health Tracker"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -41,12 +41,14 @@ var FB_CFG = {
   appId:"1:465685624102:web:42dd370b906ee9452c3de7"
 };
 var _fbApp=null, _fbDb=null, _fbAuth=null, _fbUid=null;
+var _applying=false;
+var _syncQueue={};
 
 function fbReady(){ return !!(_fbDb && _fbUid); }
 
+/* Load Firebase SDK scripts sequentially */
 function fbLoad(cb){
   if(typeof firebase!=="undefined"){ cb(); return; }
-  /* Load scripts sequentially - firebase-app must load first */
   var urls=[
     "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js",
     "https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js",
@@ -63,6 +65,69 @@ function fbLoad(cb){
   loadNext(0);
 }
 
+/* ── Granular write: write/delete a single item ── */
+function fbWriteItem(collection, id, data){
+  if(!fbReady()) return;
+  _fbDb.ref("users/"+_fbUid+"/"+collection+"/"+id).set(data).catch(function(){});
+}
+function fbDeleteItem(collection, id){
+  if(!fbReady()) return;
+  _fbDb.ref("users/"+_fbUid+"/"+collection+"/"+id).remove().catch(function(){});
+}
+
+/* ── Granular write for non-array data (settings) ── */
+function fbWriteObj(key, data){
+  if(!fbReady()) return;
+  _fbDb.ref("users/"+_fbUid+"/"+key).set(data).catch(function(){});
+}
+
+/* ── Initial full push (first connect) ── */
+function fbPushAll(appData, cb){
+  if(!fbReady()){ if(cb) cb(new Error("Not connected")); return; }
+  /* Convert arrays to objects keyed by id for Firebase */
+  var payload={};
+  ["exams","glucose","ketones","supps","suppLog","foods","meals","exercises","exTemplates"].forEach(function(k){
+    if(appData[k]&&appData[k].length){
+      payload[k]={};
+      appData[k].forEach(function(item){ if(item&&item.id) payload[k][item.id]=item; });
+    }
+  });
+  payload.settings = appData.settings||{};
+  _fbDb.ref("users/"+_fbUid).set(payload)
+    .then(function(){ if(cb) cb(null); })
+    .catch(function(e){ if(cb) cb(e); });
+}
+
+/* ── Pull all data (first connect on new device) ── */
+function fbPullAll(cb){
+  if(!fbReady()){ if(cb) cb(new Error("Not connected"),null); return; }
+  _fbDb.ref("users/"+_fbUid).once("value")
+    .then(function(snap){
+      var data=snap.val()||{};
+      /* Convert Firebase objects back to arrays */
+      var result={};
+      ["exams","glucose","ketones","supps","suppLog","foods","meals","exercises","exTemplates"].forEach(function(k){
+        result[k] = data[k] ? Object.values(data[k]) : [];
+      });
+      result.settings = data.settings||{};
+      if(cb) cb(null, result);
+    })
+    .catch(function(e){ if(cb) cb(e,null); });
+}
+
+/* ── Set up real-time listeners for each collection ── */
+function fbListenAll(onData){
+  if(!fbReady()) return;
+  ["exams","glucose","ketones","supps","suppLog","meals","exercises"].forEach(function(k){
+    _fbDb.ref("users/"+_fbUid+"/"+k).on("value", function(snap){
+      if(_applying) return;
+      var obj=snap.val();
+      var arr=obj ? Object.values(obj) : [];
+      onData(k, arr);
+    });
+  });
+}
+
 function fbConnect(onStatus, cb){
   onStatus("connecting");
   fbLoad(function(err){
@@ -72,86 +137,39 @@ function fbConnect(onStatus, cb){
       _fbDb=firebase.database();
       _fbAuth=firebase.auth();
     }
-    function setupConnection(){
-      /* Listen to connection state */
+    function afterAuth(){
+      /* Connection state listener */
       _fbDb.ref(".info/connected").on("value",function(s){
-        if(s.val()){ fbFlushQueue(); }
-        else{ onStatus("offline"); }
+        if(!s.val()) onStatus("offline");
       });
-      /* Real-time listener: when another device changes data, update local */
-      _fbDb.ref("users/"+_fbUid).on("value", function(snap){
-        if(_applying) return; /* skip if WE are writing */
-        var data = snap.val();
-        if(!data) return;
-        if(window._fbApplyRemote) window._fbApplyRemote(data);
-        onStatus("synced");
-      });
-      /* Re-connect when tab becomes visible */
+      /* Visibility change reconnect */
       document.addEventListener("visibilitychange",function(){
-        if(!document.hidden){ _fbDb.goOnline(); }
+        if(!document.hidden && _fbDb) _fbDb.goOnline();
       });
-    }
-    /* If uid already set, skip signInAnonymously */
-    if(_fbUid){
-      setupConnection();
       onStatus("connected");
       if(cb) cb(null, _fbUid);
-      return;
     }
-    /* Sign in with Google */
+    /* If UID already set, skip auth */
+    if(_fbUid){ afterAuth(); return; }
+    /* Try Google Sign-In */
     var provider = new firebase.auth.GoogleAuthProvider();
     _fbAuth.signInWithPopup(provider).then(function(cr){
-      _fbUid = cr.user.uid;
-      localStorage.setItem("ht3-fb-uid", _fbUid);
-      localStorage.setItem("ht3-fb-email", cr.user.email||"");
-      localStorage.setItem("ht3-fb-name", cr.user.displayName||"");
-      setupConnection();
-      onStatus("connected");
-      if(cb) cb(null, _fbUid);
-    }).catch(function(e){
-      /* Fallback to anonymous if Google fails */
+      _fbUid=cr.user.uid;
+      localStorage.setItem("ht3-fb-uid",_fbUid);
+      localStorage.setItem("ht3-fb-email",cr.user.email||"");
+      localStorage.setItem("ht3-fb-name",cr.user.displayName||"");
+      afterAuth();
+    }).catch(function(){
+      /* Fallback: anonymous */
       _fbAuth.signInAnonymously().then(function(cr){
         _fbUid=cr.user.uid;
         localStorage.setItem("ht3-fb-uid",_fbUid);
-        setupConnection();
-        onStatus("connected");
-        if(cb) cb(null, _fbUid);
-      }).catch(function(e2){ onStatus("error"); if(cb) cb(e2); });
+        afterAuth();
+      }).catch(function(e){ onStatus("error"); if(cb) cb(e); });
     });
   });
 }
 
-function fbSetUid(uid){ _fbUid=uid; localStorage.setItem("ht3-fb-uid",uid); }
-
-function fbPush(data, cb){
-  if(!fbReady()){ if(cb) cb(new Error("Not connected")); return; }
-  _fbDb.ref("users/"+_fbUid).set(data)
-    .then(function(){ if(cb) cb(null); })
-    .catch(function(e){ if(cb) cb(e); });
-}
-
-function fbPull(cb){
-  if(!fbReady()){ if(cb) cb(new Error("Not connected"),null); return; }
-  _fbDb.ref("users/"+_fbUid).once("value")
-    .then(function(s){ if(cb) cb(null,s.val()||{}); })
-    .catch(function(e){ if(cb) cb(e,null); });
-}
-
-var _syncQueue = {};
-function fbAutoSync(key, data){
-  _syncQueue[key] = data;
-  if(!fbReady()) return;
-  _fbDb.ref("users/"+_fbUid+"/"+key).set(data)
-    .then(function(){ if(window._fbSetSyncedAt) window._fbSetSyncedAt(new Date()); if(window._fbSetStatus) window._fbSetStatus('synced'); })
-    .catch(function(){});
-}
-function fbFlushQueue(){
-  if(!fbReady()) return;
-  Object.keys(_syncQueue).forEach(function(key){
-    _fbDb.ref("users/"+_fbUid+"/"+key).set(_syncQueue[key]).catch(function(){});
-  });
-  _syncQueue = {};
-}
 
 /* ═══════════════════ CONSTANTS ═══════════════════ */
 const CLR = {
@@ -597,16 +615,65 @@ function App(){
   var [settTab, setSettTab] = useState("user");
 
   /* ── Persist helpers ── */
-  function persistExams(l){ lsSet(LS.exams,l); setExams(l); }
-  function persistGlucose(l){ lsSet(LS.glucose,l); setGlucose(l); }
-  function persistKetones(l){ lsSet(LS.ketones,l); setKetones(l); }
-  function persistSupps(l){ lsSet(LS.supps,l); setSupps(l); }
-  function persistSuppLog(l){ lsSet(LS.suppLog,l); setSuppLog(l); }
-  function persistFoods(l){ lsSet(LS.foods,l); setFoods(l); }
-  function persistMeals(l){ lsSet(LS.meals,l); setMeals(l); }
-  function persistExTemplates(l){ lsSet(LS.exTemplates,l); setExTemplates(l); }
-  function persistExercises(l){ lsSet(LS.exercises,l); setExercises(l); }
-  function persistSettings(s){ lsSet(LS.settings,s); setSettings(s); }
+  /* ── Smart persist: updates localStorage + React state + Firebase granularly ── */
+  function syncDiff(collection, oldArr, newArr){
+    if(!fbReady()||_applying) return;
+    /* Find added/updated items */
+    var oldIds={};
+    (oldArr||[]).forEach(function(x){ if(x&&x.id) oldIds[x.id]=x; });
+    (newArr||[]).forEach(function(x){
+      if(!x||!x.id) return;
+      /* Write if new or changed */
+      fbWriteItem(collection, x.id, x);
+    });
+    /* Find deleted items */
+    (oldArr||[]).forEach(function(x){
+      if(!x||!x.id) return;
+      var stillExists = (newArr||[]).some(function(n){ return n&&n.id===x.id; });
+      if(!stillExists) fbDeleteItem(collection, x.id);
+    });
+  }
+
+  function persistExams(l){
+    syncDiff("exams", exams, l);
+    lsSet(LS.exams,l); setExams(l);
+  }
+  function persistGlucose(l){
+    syncDiff("glucose", glucose, l);
+    lsSet(LS.glucose,l); setGlucose(l);
+  }
+  function persistKetones(l){
+    syncDiff("ketones", ketones, l);
+    lsSet(LS.ketones,l); setKetones(l);
+  }
+  function persistSupps(l){
+    syncDiff("supps", supps, l);
+    lsSet(LS.supps,l); setSupps(l);
+  }
+  function persistSuppLog(l){
+    syncDiff("suppLog", suppLog, l);
+    lsSet(LS.suppLog,l); setSuppLog(l);
+  }
+  function persistFoods(l){
+    syncDiff("foods", foods, l);
+    lsSet(LS.foods,l); setFoods(l);
+  }
+  function persistMeals(l){
+    syncDiff("meals", meals, l);
+    lsSet(LS.meals,l); setMeals(l);
+  }
+  function persistExTemplates(l){
+    syncDiff("exTemplates", exTemplates, l);
+    lsSet(LS.exTemplates,l); setExTemplates(l);
+  }
+  function persistExercises(l){
+    syncDiff("exercises", exercises, l);
+    lsSet(LS.exercises,l); setExercises(l);
+  }
+  function persistSettings(s){
+    if(fbReady()&&!_applying) fbWriteObj("settings", s);
+    lsSet(LS.settings,s); setSettings(s);
+  }
   function persistAiSettings(s){ lsSet(LS.aiSettings,s); setAiSettings(s); }
 
   /* ── Init built-in foods on first run ── */
@@ -618,9 +685,26 @@ function App(){
     if(uid){
       _fbUid=uid;
       setFbUserId(uid);
-      /* Auto-connect silently on startup */
+      /* Auto-connect silently on startup + start listeners */
       setTimeout(function(){
-        fbConnect(setFbStatus, function(){});
+        fbConnect(setFbStatus, function(err){
+          if(err) return;
+          fbListenAll(function(key, arr){
+            if(_applying) return;
+            _applying=true;
+            var setters={
+              exams:function(a){lsSet(LS.exams,a);setExams(a);},
+              glucose:function(a){lsSet(LS.glucose,a);setGlucose(a);},
+              ketones:function(a){lsSet(LS.ketones,a);setKetones(a);},
+              supps:function(a){lsSet(LS.supps,a);setSupps(a);},
+              suppLog:function(a){lsSet(LS.suppLog,a);setSuppLog(a);},
+              meals:function(a){lsSet(LS.meals,a);setMeals(a);},
+              exercises:function(a){lsSet(LS.exercises,a);setExercises(a);},
+            };
+            if(setters[key]){ setters[key](arr); if(window._fbSetStatus) window._fbSetStatus("synced"); }
+            setTimeout(function(){ _applying=false; }, 500);
+          });
+        });
       }, 1000);
     }
     /* Auto-reconnect when page becomes visible again (screen unlock, tab switch) */
@@ -669,28 +753,7 @@ function App(){
   window._fbSetSyncedAt = setFbSyncedAt;
   window._fbSetStatus = setFbStatus;
 
-  /* Real-time remote update handler */
-  window._fbApplyRemote = function(data){
-    if(!data) return;
-    _applying = true;
-    function mergeArr(local, remote){
-      if(!remote||!remote.length) return local;
-      if(!local||!local.length) return remote;
-      var ids = {};
-      local.forEach(function(x){ if(x&&x.id) ids[x.id]=x; });
-      remote.forEach(function(x){ if(x&&x.id) ids[x.id]=x; }); /* remote wins for same ID */
-      return Object.values(ids);
-    }
-    if(data.exams)     { var m=mergeArr(exams,data.exams);         lsSet(LS.exams,m);         setExams(m); }
-    if(data.glucose)   { var m=mergeArr(glucose,data.glucose);     lsSet(LS.glucose,m);       setGlucose(m); }
-    if(data.ketones)   { var m=mergeArr(ketones,data.ketones);     lsSet(LS.ketones,m);       setKetones(m); }
-    if(data.supps)     { var m=mergeArr(supps,data.supps);         lsSet(LS.supps,m);         setSupps(m); }
-    if(data.suppLog)   { var m=mergeArr(suppLog,data.suppLog);     lsSet(LS.suppLog,m);       setSuppLog(m); }
-    if(data.meals)     { var m=mergeArr(meals,data.meals);         lsSet(LS.meals,m);         setMeals(m); }
-    if(data.exercises) { var m=mergeArr(exercises,data.exercises); lsSet(LS.exercises,m);     setExercises(m); }
-    if(data.foods&&data.foods.length){ lsSet(LS.foods,data.foods); setFoods(data.foods); }
-    setTimeout(function(){ _applying=false; }, 2000);
-  };
+  /* remote updates handled by fbListenAll */
 
   function changeLang(l){
     LANG=l; lsSet("ht3-lang",l); setAppLang(l);
@@ -707,9 +770,26 @@ function App(){
     setFbSyncing(true);
     fbConnect(setFbStatus, function(err){
       if(err){ setFbSyncing(false); if(cb) cb(err); return; }
-      fbPush(getSnapshot(), function(err2){
+      fbPushAll(getSnapshot(), function(err2){
         setFbSyncing(false);
-        if(cb) cb(err2);
+        if(err2){ if(cb) cb(err2); return; }
+        /* Start real-time listeners after upload */
+        fbListenAll(function(key, arr){
+          if(_applying) return;
+          _applying=true;
+          var setters={
+            exams:function(a){lsSet(LS.exams,a);setExams(a);},
+            glucose:function(a){lsSet(LS.glucose,a);setGlucose(a);},
+            ketones:function(a){lsSet(LS.ketones,a);setKetones(a);},
+            supps:function(a){lsSet(LS.supps,a);setSupps(a);},
+            suppLog:function(a){lsSet(LS.suppLog,a);setSuppLog(a);},
+            meals:function(a){lsSet(LS.meals,a);setMeals(a);},
+            exercises:function(a){lsSet(LS.exercises,a);setExercises(a);},
+          };
+          if(setters[key]){ setters[key](arr); if(window._fbSetStatus) window._fbSetStatus("synced"); }
+          setTimeout(function(){ _applying=false; }, 500);
+        });
+        if(cb) cb(null);
       });
     });
   }
@@ -717,7 +797,7 @@ function App(){
     setFbSyncing(true);
     fbConnect(setFbStatus, function(err){
       if(err){ setFbSyncing(false); if(cb) cb(err); return; }
-      fbPull(function(err2,data){
+      fbPullAll(function(err2,data){
         setFbSyncing(false);
         if(err2){ if(cb) cb(err2); return; }
         if(!data){ if(cb) cb(new Error("Δεν βρέθηκαν δεδομένα")); return; }
@@ -755,12 +835,29 @@ function App(){
         /* Push merged data back to Firebase so cloud is also updated */
         setTimeout(function(){
           _applying=false;
-          fbPush({
+          /* Push merged data back + start real-time listeners */
+          fbPushAll({
             exams:merged.exams, glucose:merged.glucose, ketones:merged.ketones,
             supps:merged.supps, suppLog:merged.suppLog, foods:merged.foods,
             meals:merged.meals, exercises:merged.exercises, exTemplates:merged.exTemplates,
             settings:data.settings||{}
-          }, function(){});
+          }, function(){
+            fbListenAll(function(key, arr){
+              if(_applying) return;
+              _applying=true;
+              var setters={
+                exams:function(a){lsSet(LS.exams,a);setExams(a);},
+                glucose:function(a){lsSet(LS.glucose,a);setGlucose(a);},
+                ketones:function(a){lsSet(LS.ketones,a);setKetones(a);},
+                supps:function(a){lsSet(LS.supps,a);setSupps(a);},
+                suppLog:function(a){lsSet(LS.suppLog,a);setSuppLog(a);},
+                meals:function(a){lsSet(LS.meals,a);setMeals(a);},
+                exercises:function(a){lsSet(LS.exercises,a);setExercises(a);},
+              };
+              if(setters[key]){ setters[key](arr); if(window._fbSetStatus) window._fbSetStatus("synced"); }
+              setTimeout(function(){ _applying=false; }, 500);
+            });
+          });
         }, 1000);
         var count = 0;
         Object.values(merged).forEach(function(arr){ if(arr&&arr.length) count+=arr.length; });
@@ -770,12 +867,7 @@ function App(){
   }
 
   /* ── Auto-sync on data change (only if already connected) ── */
-  useEffect(function(){ if(!_applying) fbAutoSync("exams",exams); }, [exams]);
-  useEffect(function(){ if(!_applying) fbAutoSync("glucose",glucose); }, [glucose]);
-  useEffect(function(){ if(!_applying) fbAutoSync("ketones",ketones); }, [ketones]);
-  useEffect(function(){ if(!_applying) fbAutoSync("meals",meals); }, [meals]);
-  useEffect(function(){ if(!_applying) fbAutoSync("exercises",exercises); }, [exercises]);
-  useEffect(function(){ if(!_applying) fbAutoSync("supps",supps); if(!_applying) fbAutoSync("suppLog",suppLog); }, [supps,suppLog]);
+  /* auto-sync handled by syncDiff in persist functions */
 
   /* ── Navigation ── */
   function navTo(t){
@@ -2537,6 +2629,19 @@ function App(){
         /* backup section */
         React.createElement("div",{style:{borderTop:"1px solid #e2e8f0",paddingTop:14}},
           React.createElement("div",{style:{fontWeight:700,fontSize:14,marginBottom:10}},"💾 Backup"),
+          /* Manual upload for migration */
+          React.createElement("button",{
+            onClick:function(){
+              if(!confirm("Ανέβασμα όλων των δεδομένων στο Firebase;")) return;
+              setFbSyncing(true);
+              fbPushAll(getSnapshot(), function(err){
+                setFbSyncing(false);
+                if(err) alert("Σφάλμα: "+err.message);
+                else{ setFbStatus("synced"); setFbSyncedAt(new Date()); alert("✅ Ανέβηκαν όλα τα δεδομένα!"); }
+              });
+            },
+            style:{background:"#f0fdf4",color:"#16a34a",border:"2px solid #86efac",borderRadius:12,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:10}
+          },fbSyncing?"⏳...":"🔄 Ανέβασμα δεδομένων → Firebase"),
           React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}},
             React.createElement("button",{
               onClick:function(){
@@ -2625,7 +2730,7 @@ function App(){
     React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",color:"#fff",padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50,boxShadow:"0 2px 8px rgba(37,99,235,.3)"}},
       React.createElement("span",{style:{fontSize:24}},"🏥"),
       React.createElement("div",{style:{flex:1}},
-        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.7.1")),
+        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.1")),
         React.createElement("div",{style:{fontSize:12,opacity:.8}},exams.length+" εξετάσεις · "+supps.length+" συμπλ.")
       ),
       alertCount>0?React.createElement("div",{style:{background:"#ef4444",color:"#fff",borderRadius:99,width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}},alertCount):null,
@@ -2868,7 +2973,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 /* ═══════════════════ SERVICE WORKER ═══════════════════ */
 if('serviceWorker' in navigator) {
   var swCode = [
-    "const CACHE='ht-v3-7-1';",
+    "const CACHE='ht-v3-8-1';",
     "const URLS=['/'];",
     "self.addEventListener('install',e=>{",
     "  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));",
