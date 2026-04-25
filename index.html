@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes"/>
-<title>Health Tracker v3.8.7</title>
+<title>Health Tracker v3.9</title>
 <meta name="application-name" content="Health Tracker"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -609,6 +609,7 @@ function App(){
   var [intakeTime, setIntakeTime] = useState(nowTime());
   var [intakeNotes, setIntakeNotes] = useState("");
   var [selTrendParam, setSelTrendParam] = useState("");
+  var [timelineDate, setTimelineDate] = useState(function(){ return today(); });
   var [gluTrendCtx, setGluTrendCtx] = useState("all");
   var [fbStatus, setFbStatus] = useState("offline");
   var [fbUserId, setFbUserId] = useState(function(){ return localStorage.getItem("ht3-fb-uid")||""; });
@@ -1221,113 +1222,60 @@ function App(){
     var todayStr=today();
     var tot=dayTotals(todayStr);
     var exCal=exCalForDate(todayStr);
-    var gluToday=glucoseForDate(todayStr);
-    var exToday=exercises.filter(function(e){return e.date===todayStr;});
-    var suppAlerts=supps.filter(function(s){
-      var info=suppStockInfo(s);
-      return info.daysLeft<10||info.remaining===0;
-    });
     var carbVal=settings.ketoMode?Math.max(0,tot.carbs-tot.fiber):tot.carbs;
     var carbGoal=settings.ketoMode?goals.carbsNet:goals.carbsTotal;
+    var h=new Date().getHours();
+    var greet=h>=5&&h<12?"Καλημέρα! 🌅":h>=12&&h<17?"Καλησπέρα! ☀️":h>=17&&h<21?"Καλό απόγευμα! 🌆":"Καληνύχτα! 🌙";
+
     return React.createElement("div",null,
-      /* Header Card */
+      /* Header card */
       React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",borderRadius:14,padding:18,marginBottom:12,color:"#fff"}},
-        React.createElement("div",{style:{fontSize:13,opacity:.8,marginBottom:4}},new Date().toLocaleDateString("el-GR",{weekday:"long",day:"numeric",month:"long"})),
+        React.createElement("div",{style:{fontSize:13,opacity:.8,marginBottom:4}},
+          new Date().toLocaleDateString("el-GR",{weekday:"long",day:"numeric",month:"long"})
+        ),
         React.createElement("div",{style:{fontSize:20,fontWeight:800}},
-          (function(){
-            var h = new Date().getHours();
-            var greet = h>=5&&h<12?"Καλημέρα! 🌅":h>=12&&h<17?"Καλησπέρα! ☀️":h>=17&&h<21?"Καλό απόγευμα! 🌆":"Καληνύχτα! 🌙";
-            return tot.calories>100?"Καλή συνέχεια! 💪":greet;
-          })()
+          tot.calories>100?"Καλή συνέχεια! 💪":greet
         ),
         React.createElement("div",{style:{fontSize:13,opacity:.85,marginTop:2}},
           tot.calories>0?Math.round(tot.calories)+" kcal σήμερα":"Ξεκίνα καταγράφοντας τα γεύματά σου"
         )
       ),
-      /* Macro Summary */
-      tot.calories>0?React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}},
+      /* Macro summary */
+      React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:12}},
         [
           {l:"Θερμίδες",v:Math.round(tot.calories),g:goals.calories+(exCal||0),c:"#2563eb"},
-          {l:"Πρωτεΐνη",v:Math.round(tot.protein)+"g",g:goals.protein+"g",c:CLR.ok},
-          {l:settings.ketoMode?"Net Carbs":"Υδ/κες",v:Math.round(carbVal)+"g",g:carbGoal+"g",c:CLR.warn},
-          {l:"Λίπος",v:Math.round(tot.fat)+"g",g:goals.fat+"g",c:CLR.purple},
+          {l:"Πρωτεΐνη",v:Math.round(tot.protein),g:goals.protein,c:CLR.ok,u:"g"},
+          {l:settings.ketoMode?"Net C":"Υδρ/κες",v:Math.round(carbVal),g:carbGoal,c:CLR.warn,u:"g"},
+          {l:"Λίπος",v:Math.round(tot.fat),g:goals.fat,c:CLR.purple,u:"g"},
         ].map(function(item){
-          var numV=parseFloat(item.v);
-          var numG=parseFloat(item.g);
-          var pct=numG>0?Math.min(100,(numV/numG)*100):0;
-          return React.createElement("div",{key:item.l,style:{background:"#fff",borderRadius:12,padding:14,boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}},
-            React.createElement("div",{style:{fontSize:12,color:CLR.muted,marginBottom:4}},item.l),
-            React.createElement("div",{style:{fontWeight:800,fontSize:18,color:item.c}},item.v),
-            React.createElement("div",{style:{fontSize:11,color:CLR.muted,marginBottom:6}},"/ "+item.g),
-            React.createElement("div",{style:{background:"#e2e8f0",borderRadius:99,height:4}},
-              React.createElement("div",{style:{background:item.c,width:pct+"%",height:"100%",borderRadius:99}})
+          var pct=item.g>0?Math.min(100,(item.v/item.g)*100):0;
+          var over=item.v>item.g;
+          return React.createElement("div",{key:item.l,style:{background:"#fff",borderRadius:12,padding:"10px 6px",textAlign:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}},
+            React.createElement("div",{style:{fontSize:11,color:CLR.muted,marginBottom:3}},item.l),
+            React.createElement("div",{style:{fontWeight:800,fontSize:15,color:over?CLR.err:item.c}},item.v+(item.u||"")),
+            React.createElement("div",{style:{fontSize:10,color:CLR.muted}},"/"+item.g+(item.u||"")),
+            React.createElement("div",{style:{background:"#e2e8f0",borderRadius:99,height:3,marginTop:4}},
+              React.createElement("div",{style:{background:over?CLR.err:item.c,width:pct+"%",height:"100%",borderRadius:99}})
             )
           );
         })
-      ):null,
-      /* Alerts */
-      suppAlerts.length>0?React.createElement("div",{style:{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:12,padding:14,marginBottom:12}},
-        React.createElement("div",{style:{fontWeight:700,color:CLR.warn,marginBottom:8}},"⚠️ Ειδοποιήσεις Αποθέματος"),
-        suppAlerts.map(function(s){
-          var info=suppStockInfo(s);
-          return React.createElement("div",{key:s.id,style:{fontSize:13,color:CLR.text,marginBottom:4}},
-            "💊 "+s.name+" — "+(info.remaining===0?"❌ Εξαντλήθηκε":"🔴 "+info.daysLeft+" ημέρες")
-          );
-        })
-      ):null,
-      /* Today Glucose */
-      gluToday.length>0?React.createElement("div",{style:SI.card},
-        React.createElement("div",{style:{fontWeight:700,fontSize:14,marginBottom:10}},
-          "🩸 Σάκχαρο Σήμερα"
-        ),
-        React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-          gluToday.map(function(g){
-            return React.createElement("div",{key:g.id,style:{background:gluColor(g.value)+"15",borderRadius:10,padding:"8px 12px",textAlign:"center"}},
-              React.createElement("div",{style:{fontWeight:800,fontSize:18,color:gluColor(g.value)}},g.value),
-              React.createElement("div",{style:{fontSize:10,color:CLR.muted}},"mg/dL"),
-              React.createElement("div",{style:{fontSize:10,color:CLR.muted}},g.time)
-            );
-          })
-        )
-      ):null,
-      /* Today Exercise */
-      exToday.length>0?React.createElement("div",{style:SI.card},
-        React.createElement("div",{style:{fontWeight:700,fontSize:14,marginBottom:10}},"🏃 Άσκηση Σήμερα"),
-        exToday.map(function(e){
-          return React.createElement("div",{key:e.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
-            React.createElement("div",null,
-              React.createElement("div",{style:{fontWeight:600,fontSize:13}},e.name),
-              React.createElement("div",{style:{color:CLR.muted,fontSize:12}},e.duration+" λεπτά · "+e.intensity)
-            ),
-            React.createElement("div",{style:{color:CLR.err,fontWeight:700}},"-"+e.calories+" kcal")
-          );
-        })
-      ):null,
-      /* Recent Exams */
-      exams.length>0?React.createElement("div",{style:SI.card},
-        React.createElement("div",{style:{fontWeight:700,fontSize:14,marginBottom:10}},"📋 Τελευταίες Εξετάσεις"),
-        [].concat(exams).sort(function(a,b){return new Date(b.date)-new Date(a.date);}).slice(0,3).map(function(e){
-          var cat=EXAM_CATS.find(function(c){return c.id===e.category;})||EXAM_CATS[4];
-          return React.createElement("div",{key:e.id,onClick:function(){ setViewExam(e); navTo("exams"); },
-            style:{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #e2e8f0",cursor:"pointer"}},
-            React.createElement("span",{style:{fontSize:20}},cat.icon),
-            React.createElement("div",{style:{flex:1}},
-              React.createElement("div",{style:{fontWeight:600,fontSize:13}},e.title),
-              React.createElement("div",{style:{color:CLR.muted,fontSize:12}},"📅 "+fmtDate(e.date))
-            ),
-            React.createElement("span",{style:{color:CLR.muted}},"›")
-          );
-        })
-      ):null,
+      ),
       /* Quick actions */
-      React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:4}},
-        [{l:"+ Γεύμα",t:"diet",c:CLR.primary},{l:"+ Άσκηση",t:"exercise",c:CLR.teal},{l:"🩸 Σάκχαρο",t:"metrics",c:CLR.sugar},{l:"📈 Τάσεις",t:"trends",c:CLR.purple}]
-          .map(function(a){
-            return React.createElement("button",{key:a.t,onClick:function(){ navTo(a.t); },style:{background:a.c+"18",color:a.c,border:"1px solid "+a.c+"40",borderRadius:12,padding:"12px",fontSize:14,fontWeight:600,cursor:"pointer"}},a.l);
-          })
+      React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},
+        [
+          {l:"+ Γεύμα",      t:"diet",     c:CLR.primary},
+          {l:"+ Άσκηση",     t:"exercise", c:CLR.teal},
+          {l:"🩸 Σάκχαρο",   t:"metrics",  c:CLR.sugar},
+          {l:"📅 Timeline",  t:"timeline", c:CLR.purple},
+        ].map(function(a){
+          return React.createElement("button",{key:a.t,onClick:function(){navTo(a.t);},
+            style:{background:a.c+"18",color:a.c,border:"1px solid "+a.c+"40",borderRadius:12,padding:"14px",fontSize:14,fontWeight:600,cursor:"pointer"}},
+            a.l);
+        })
       )
     );
   }
+
 
   /* ── DIET ── */
   function renderDiet(){
@@ -2023,12 +1971,41 @@ function App(){
     }
 
     /* Supps list */
+    var monthly=totalMonthlyCost();
+    var yearly=monthly*12;
+    /* Sort: partial (1-99%) first, then full (100%), then empty (0%) */
+    var sortedSupps=[].concat(supps).sort(function(a,b){
+      var ia=suppStockInfo(a), ib=suppStockInfo(b);
+      var pa=ia.total>0?ia.pct:50, pb=ib.total>0?ib.pct:50;
+      /* 0% goes last */
+      if(pa===0&&pb!==0) return 1;
+      if(pb===0&&pa!==0) return -1;
+      /* 100% goes after partial */
+      if(pa===100&&pb!==100&&pb!==0) return 1;
+      if(pb===100&&pa!==100&&pa!==0) return -1;
+      /* partial: sort by pct ascending (least first) */
+      return pa-pb;
+    });
+
     return React.createElement("div",null,
-      React.createElement(SectionTitle,{title:"💊 Συμπληρώματα",
-        action:React.createElement("button",{onClick:function(){setSuppForm(emptySuppForm());setShowAddSupp(true);},style:{background:CLR.primary,color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontSize:14,fontWeight:600,cursor:"pointer"}},"+ Προσθήκη")
+      React.createElement(SectionTitle,{title:t("suppsTitle"),
+        action:React.createElement("button",{onClick:function(){setSuppForm(emptySuppForm());setShowAddSupp(true);},style:{background:CLR.primary,color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",fontSize:14,fontWeight:600,cursor:"pointer"}},t("addSupp"))
       }),
+      /* cost summary banner */
+      monthly>0?React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#7c3aed)",borderRadius:14,padding:"14px 18px",marginBottom:12,color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+        React.createElement("div",null,
+          React.createElement("div",{style:{fontSize:12,opacity:.85}},"💰 Μηνιαίο κόστος stack"),
+          React.createElement("div",{style:{fontSize:24,fontWeight:800}},"€"+monthly.toFixed(2))
+        ),
+        React.createElement("div",{style:{textAlign:"right",fontSize:13}},
+          React.createElement("div",null,"€"+yearly.toFixed(2)+"/έτος"),
+          React.createElement("div",{style:{fontSize:11,opacity:.8}},
+            supps.filter(function(s){return (parseFloat(s.price)||0)>0;}).length+" / "+supps.length+" με τιμή"
+          )
+        )
+      ):null,
       supps.length===0?React.createElement(EmptyState,{icon:"💊",title:"Δεν έχεις καταχωρήσει συμπληρώματα",onAdd:function(){setSuppForm(emptySuppForm());setShowAddSupp(true);},addLabel:"+ Προσθήκη"}):
-      supps.map(function(s){
+      sortedSupps.map(function(s){
         var info=suppStockInfo(s);
         var stockCol=info.remaining===0?CLR.err:info.daysLeft<10?CLR.err:info.daysLeft<30?CLR.warn:CLR.ok;
         var stockIcon=info.remaining===0?"🔴":info.daysLeft<10?"🔴":info.daysLeft<30?"🟡":"🟢";
@@ -2053,7 +2030,7 @@ function App(){
     );
   }
 
-  /* ── EXAMS ── */
+
   function renderExams(){
     /* Detail view */
     if(viewExam&&!cmpMode){
@@ -2790,18 +2767,164 @@ function App(){
     );
   }
 
+    /* ── TIMELINE ── */
+  function renderTimeline(){
+    var suppAlerts=supps.filter(function(s){
+      var info=suppStockInfo(s);
+      return info.remaining===0||info.daysLeft<10;
+    });
+
+    /* Build all events for the day */
+    var events=[];
+
+    /* Meals */
+    var dayMeals=mealsForDate(timelineDate);
+    dayMeals.forEach(function(m){
+      var mac=calcMealMacros(m);
+      var mt=MEAL_TYPES.find(function(t){return t.id===m.type;})||MEAL_TYPES[7];
+      events.push({
+        time:m.time, type:"meal", id:m.id,
+        icon:mt.icon, title:L(mt.id),
+        sub:Math.round(mac.calories)+"kcal · P:"+Math.round(mac.protein)+"g · C:"+Math.round(mac.carbs)+"g · F:"+Math.round(mac.fat)+"g",
+        items:(m.items||[]).map(function(item){
+          var food=foods.find(function(f){return f.id===item.foodId;});
+          return (food?food.name:"?")+' '+item.qty+'g';
+        }).join(", "),
+        color:CLR.primary, bgColor:"#eff6ff",
+        onClick:function(){ navTo("diet"); }
+      });
+    });
+
+    /* Exercises */
+    exercises.filter(function(e){return e.date===timelineDate;}).forEach(function(e){
+      events.push({
+        time:e.time, type:"exercise", id:e.id,
+        icon:"🏃", title:e.name,
+        sub:e.duration+" λεπτά · -"+e.calories+" kcal",
+        color:CLR.teal, bgColor:"#f0fdfa",
+        onClick:function(){ navTo("exercise"); }
+      });
+    });
+
+    /* Glucose */
+    glucoseForDate(timelineDate).forEach(function(g){
+      var col=gluColor(g.value);
+      events.push({
+        time:g.time, type:"glucose", id:g.id,
+        icon:"🩸", title:g.value+" mg/dL",
+        sub:gluCtxLabel(g.context)+(g.notes?" · "+g.notes:""),
+        color:col, bgColor:col+"15",
+        onClick:function(){ navTo("metrics"); }
+      });
+    });
+
+    /* Supplements taken */
+    suppLog.filter(function(l){return l.date===timelineDate;}).forEach(function(l){
+      var s=supps.find(function(x){return x.id===l.suppId;});
+      if(!s) return;
+      events.push({
+        time:l.time, type:"supp", id:l.id,
+        icon:"💊", title:s.name,
+        sub:l.servings+" serving"+(l.servings!==1?"s":"")+(l.notes?" · "+l.notes:""),
+        color:CLR.purple, bgColor:"#faf5ff",
+        onClick:function(){ navTo("supps"); }
+      });
+    });
+
+    /* Sort by time */
+    events.sort(function(a,b){ return (a.time||"00:00").localeCompare(b.time||"00:00"); });
+
+    return React.createElement("div",null,
+      /* Date nav */
+      React.createElement("div",{style:{background:"#fff",borderRadius:12,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 1px 4px rgba(0,0,0,0.07)"}},
+        React.createElement("button",{onClick:function(){var d=new Date(timelineDate);d.setDate(d.getDate()-1);setTimelineDate(d.toISOString().slice(0,10));},style:{background:"none",border:"none",cursor:"pointer",fontSize:22,padding:"0 8px"}},"‹"),
+        React.createElement("input",{type:"date",style:{border:"none",fontSize:15,fontWeight:700,color:CLR.text,background:"transparent",textAlign:"center"},value:timelineDate,onChange:function(e){setTimelineDate(e.target.value);}}),
+        React.createElement("button",{onClick:function(){var d=new Date(timelineDate);d.setDate(d.getDate()+1);setTimelineDate(d.toISOString().slice(0,10));},style:{background:"none",border:"none",cursor:"pointer",fontSize:22,padding:"0 8px"}},"›")
+      ),
+
+      /* Day summary */
+      (function(){
+        var tot=dayTotals(timelineDate);
+        var exCal=exCalForDate(timelineDate);
+        if(tot.calories===0&&events.length===0) return React.createElement(EmptyState,{icon:"📅",title:"Δεν υπάρχουν καταχωρήσεις",sub:"Πρόσθεσε γεύμα, άσκηση ή μέτρηση"});
+        return React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",borderRadius:12,padding:"12px 16px",marginBottom:12,color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:11,opacity:.8}},"Θερμίδες εισαγωγής"),
+            React.createElement("div",{style:{fontSize:22,fontWeight:800}},Math.round(tot.calories)+" kcal")
+          ),
+          exCal>0?React.createElement("div",{style:{textAlign:"center"}},
+            React.createElement("div",{style:{fontSize:11,opacity:.8}},"Καύση"),
+            React.createElement("div",{style:{fontSize:18,fontWeight:700}},"-"+exCal+" kcal")
+          ):null,
+          React.createElement("div",{style:{textAlign:"right"}},
+            React.createElement("div",{style:{fontSize:11,opacity:.8}},"Net"),
+            React.createElement("div",{style:{fontSize:22,fontWeight:800}},Math.round(tot.calories-exCal)+" kcal")
+          )
+        );
+      })(),
+
+      /* Timeline events */
+      events.length===0?null:
+      React.createElement("div",{style:{position:"relative"}},
+        /* Vertical line */
+        React.createElement("div",{style:{position:"absolute",left:35,top:0,bottom:0,width:2,background:"#e2e8f0",zIndex:0}}),
+        events.map(function(ev,i){
+          return React.createElement("div",{key:ev.id+i,
+            onClick:ev.onClick,
+            style:{display:"flex",gap:12,marginBottom:16,cursor:"pointer",position:"relative"}},
+            /* Time */
+            React.createElement("div",{style:{width:48,flexShrink:0,textAlign:"right",paddingTop:6}},
+              React.createElement("div",{style:{fontSize:11,color:CLR.muted,fontWeight:600}},ev.time||"")
+            ),
+            /* Dot */
+            React.createElement("div",{style:{width:24,height:24,borderRadius:99,background:ev.bgColor,border:"2px solid "+ev.color,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,zIndex:1,fontSize:12,marginTop:4}},
+              ev.icon
+            ),
+            /* Content */
+            React.createElement("div",{style:{flex:1,background:"#fff",borderRadius:12,padding:"10px 12px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",borderLeft:"3px solid "+ev.color}},
+              React.createElement("div",{style:{fontWeight:700,fontSize:14,color:CLR.text}},ev.title),
+              React.createElement("div",{style:{fontSize:12,color:CLR.muted,marginTop:2}},ev.sub),
+              ev.items?React.createElement("div",{style:{fontSize:11,color:CLR.muted,marginTop:4,fontStyle:"italic"}},ev.items):null
+            )
+          );
+        })
+      ),
+
+      /* Supplement alerts */
+      suppAlerts.length>0?React.createElement("div",{style:{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:12,padding:14,marginTop:8}},
+        React.createElement("div",{style:{fontWeight:700,color:CLR.warn,marginBottom:10}},"⚠️ Ειδοποιήσεις Αποθέματος"),
+        suppAlerts.map(function(s){
+          var info=suppStockInfo(s);
+          return React.createElement("div",{key:s.id,
+            onClick:function(){setViewSupp(s);navTo("supps");},
+            style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #fde68a",cursor:"pointer"}},
+            React.createElement("div",null,
+              React.createElement("div",{style:{fontWeight:600,fontSize:13}},"💊 "+s.name),
+              React.createElement("div",{style:{fontSize:12,color:CLR.muted}},s.brand||"")
+            ),
+            React.createElement("div",{style:{textAlign:"right"}},
+              info.remaining===0?
+                React.createElement("div",{style:{color:CLR.err,fontWeight:700,fontSize:13}},"❌ Τελείωσε"):
+                React.createElement("div",{style:{color:CLR.err,fontWeight:700,fontSize:13}},"🔴 "+info.daysLeft+" ημέρες")
+            )
+          );
+        })
+      ):null
+    );
+  }
+
     /* ═══════════════════════════════════════════
      MAIN RENDER
   ═══════════════════════════════════════════ */
   LANG = appLang;
   var NAV = [
-    {id:"home",    i:"🏠", l:L("home")},
-    {id:"diet",    i:"🍽", l:L("diet")},
-    {id:"exercise",i:"🏃", l:L("exercise")},
-    {id:"exams",   i:"📋", l:L("exams")},
-    {id:"metrics", i:"🩸", l:L("metrics")},
-    {id:"supps",   i:"💊", l:L("supps")},
-    {id:"add",     i:"➕", l:L("addNew")},
+    {id:"home",     i:"🏠", l:L("home")},
+    {id:"diet",     i:"🍽", l:L("diet")},
+    {id:"exercise", i:"🏃", l:L("exercise")},
+    {id:"exams",    i:"📋", l:L("exams")},
+    {id:"metrics",  i:"🩸", l:L("metrics")},
+    {id:"supps",    i:"💊", l:L("supps")},
+    {id:"timeline", i:"📅", l:"Timeline"},
   ];
 
   /* Alert badge count */
@@ -2820,7 +2943,7 @@ function App(){
     React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",color:"#fff",padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50,boxShadow:"0 2px 8px rgba(37,99,235,.3)"}},
       React.createElement("span",{style:{fontSize:24}},"🏥"),
       React.createElement("div",{style:{flex:1}},
-        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.7")),
+        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.9")),
         React.createElement("div",{style:{fontSize:12,opacity:.8}},exams.length+" εξετάσεις · "+supps.length+" συμπλ.")
       ),
       alertCount>0?React.createElement("div",{style:{background:"#ef4444",color:"#fff",borderRadius:99,width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}},alertCount):null,
@@ -2856,17 +2979,26 @@ function App(){
       tab==="exams"?renderExams():null,
       tab==="trends"?renderTrends():null,
       tab==="supps"?renderSupps():null,
-      tab==="add"?renderAddExam():null
+      tab==="add"?renderAddExam():null,
+      tab==="timeline"?renderTimeline():null
     ),
 
     /* Bottom Nav */
     React.createElement("div",{style:{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"#fff",borderTop:"1px solid #e2e8f0",display:"flex",zIndex:100,boxShadow:"0 -2px 10px rgba(0,0,0,.07)"}},
       NAV.map(function(n){
+        var active = tab===n.id;
         return React.createElement("button",{key:n.id,onClick:function(){navTo(n.id);},
-          style:{flex:1,padding:"9px 2px 7px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:tab===n.id?CLR.primary:"#94a3b8",position:"relative"}},
+          style:{flex:1,padding:"9px 2px 7px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:active?CLR.primary:"#94a3b8",position:"relative"}},
           n.id==="supps"&&alertCount>0?React.createElement("div",{style:{position:"absolute",top:6,right:"calc(50% - 14px)",background:"#ef4444",color:"#fff",borderRadius:99,width:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700}},alertCount):null,
-          React.createElement("span",{style:{fontSize:20}},n.i),
-          React.createElement("span",{style:{fontSize:10,fontWeight:tab===n.id?700:400}},n.l)
+          React.createElement("div",{style:{
+            width:36,height:28,borderRadius:10,
+            background:active?"#eff6ff":"transparent",
+            display:"flex",alignItems:"center",justifyContent:"center",
+            transition:"background .15s"
+          }},
+            React.createElement("span",{style:{fontSize:19}},n.i)
+          ),
+          React.createElement("span",{style:{fontSize:10,fontWeight:active?700:400,color:active?CLR.primary:"#94a3b8"}},n.l)
         );
       })
     )
@@ -3063,7 +3195,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 /* ═══════════════════ SERVICE WORKER ═══════════════════ */
 if('serviceWorker' in navigator) {
   var swCode = [
-    "const CACHE='ht-v3-8-7';",
+    "const CACHE='ht-v3-9';",
     "const URLS=['/'];",
     "self.addEventListener('install',e=>{",
     "  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));",
