@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes"/>
-<title>Health Tracker v3.8.2</title>
+<title>Health Tracker v3.8.4</title>
 <meta name="application-name" content="Health Tracker"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -200,7 +200,7 @@ var GLU_CTX_MAP = {};
 GLUCOSE_CONTEXTS.forEach(function(x){ GLU_CTX_MAP[x.k] = x.l; });
 function gluCtxLabel(k){ return GLU_CTX_MAP[k] || k; }
 
-const SUPP_CATS = ["Πολυβιταμίνη","Πρωτεΐνη","Βιταμίνη D","Ωμέγα-3","Μαγνήσιο","Ψευδάργυρος","Προβιοτικά","Κρεατίνη","Κολλαγόνο","Άλλο"];
+const SUPP_CATS = ["Βιταμίνες","Μέταλλα & Ιχνοστοιχεία","Ωμέγα-3","Προβιοτικά","Πρωτεΐνη","Αμινοξέα","Ηλεκτρολύτες","Κρεατίνη","Κολλαγόνο","Άλλο"];
 const SUPP_FORMS = ["Caps","Tabs","Softgels","Powder","Liquid","Gummies"];
 const EX_TYPES = ["Cardio","Strength","HIIT","Yoga","Walking","Cycling","Swimming","Other"];
 const EX_INTENSITIES = ["Low","Medium","High"];
@@ -584,6 +584,7 @@ function App(){
   var [searchFood, setSearchFood] = useState("");
   var [mealFoodSearch, setMealFoodSearch] = useState("");
   var [mealFoodPickerOpen, setMealFoodPickerOpen] = useState(false);
+  var [suppCatOpen, setSuppCatOpen] = useState(false);
   var [intakeServings, setIntakeServings] = useState("1");
   var [intakeDate, setIntakeDate] = useState(today());
   var [intakeTime, setIntakeTime] = useState(nowTime());
@@ -1896,7 +1897,7 @@ function App(){
         var item=Object.assign({},sf,{id:editSupp?editSupp.id:genId()});
         if(editSupp) persistSupps(supps.map(function(x){return x.id===item.id?item:x;}));
         else persistSupps([item].concat(supps));
-        setShowAddSupp(false); setEditSupp(null); setSuppForm(null);
+        setShowAddSupp(false); setEditSupp(null); setSuppForm(null); setSuppCatOpen(false);
       }
       return React.createElement("div",null,
         React.createElement(SectionTitle,{back:function(){setShowAddSupp(false);setEditSupp(null);setSuppForm(null);},title:editSupp?"✏️ Επεξεργασία Συμπλ.":"💊 Νέο Συμπλήρωμα"}),
@@ -1905,13 +1906,32 @@ function App(){
           fld("Όνομα *","name","π.χ. Vitamin D3"),
           fld("Εταιρία / Brand","brand","π.χ. Solgar"),
           React.createElement(FormField,{label:"Κατηγορία"},
-            React.createElement("select",{style:SI.inp,value:sf.category||"",onChange:function(e){updS("category",e.target.value);}},
-              React.createElement("option",{value:""},"-- Επιλογή --"),
-              SUPP_CATS.map(function(c){return React.createElement("option",{key:c,value:c},c);})
+            React.createElement("div",{style:{position:"relative"}},
+              React.createElement("div",{
+                onClick:function(){setSuppCatOpen(!suppCatOpen);},
+                style:{border:"1px solid #e2e8f0",borderRadius:8,padding:"9px 12px",fontSize:14,background:"#fff",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}
+              },
+                React.createElement("span",{style:{color:sf.category?CLR.text:CLR.muted}},sf.category||"-- Επιλογή κατηγορίας --"),
+                React.createElement("span",null,suppCatOpen?"▲":"▼")
+              ),
+              suppCatOpen?React.createElement("div",{
+                style:{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,0.1)",zIndex:100,maxHeight:220,overflowY:"auto"}
+              },
+                SUPP_CATS.map(function(cat){
+                  var active=sf.category===cat;
+                  return React.createElement("div",{
+                    key:cat,
+                    onClick:function(){updS("category",cat);setSuppCatOpen(false);},
+                    style:{padding:"11px 14px",cursor:"pointer",fontSize:14,fontWeight:active?700:400,
+                      background:active?CLR.pl:"#fff",color:active?CLR.primary:CLR.text,
+                      borderBottom:"1px solid #f1f5f9"}
+                  },cat);
+                })
+              ):null
             )
           ),
           React.createElement(FormField,{label:"Μορφή"},
-            React.createElement("select",{style:SI.inp,value:sf.form||"Caps",onChange:function(e){updS("form",e.target.value);}},
+            React.createElement("select",{style:Object.assign({},SI.inp,{fontSize:15}),value:sf.form||"Caps",onChange:function(e){updS("form",e.target.value);}},
               SUPP_FORMS.map(function(f){return React.createElement("option",{key:f,value:f},f);})
             )
           )
@@ -2652,6 +2672,7 @@ function App(){
         React.createElement("div",{style:{borderTop:"1px solid #e2e8f0",paddingTop:14}},
           React.createElement("div",{style:{fontWeight:700,fontSize:14,marginBottom:10}},"💾 Backup"),
           /* Manual upload for migration */
+          /* Upload */
           React.createElement("button",{
             onClick:function(){
               if(!confirm("Ανέβασμα όλων των δεδομένων στο Firebase;")) return;
@@ -2662,8 +2683,35 @@ function App(){
                 else{ setFbStatus("synced"); setFbSyncedAt(new Date()); alert("✅ Ανέβηκαν όλα τα δεδομένα!"); }
               });
             },
-            style:{background:"#f0fdf4",color:"#16a34a",border:"2px solid #86efac",borderRadius:12,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:10}
-          },fbSyncing?"⏳...":"🔄 Ανέβασμα δεδομένων → Firebase"),
+            style:{background:"#f0fdf4",color:"#16a34a",border:"2px solid #86efac",borderRadius:12,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:8}
+          },fbSyncing?"⏳...":"⬆️ Ανέβασμα → Firebase"),
+          /* Download */
+          React.createElement("button",{
+            onClick:function(){
+              if(!confirm("Κατέβασμα δεδομένων από Firebase; Τα τοπικά δεδομένα θα αντικατασταθούν.")) return;
+              setFbSyncing(true);
+              fbPullAll(function(err,data){
+                setFbSyncing(false);
+                if(err){ alert("Σφάλμα: "+err.message); return; }
+                if(!data){ alert("Δεν βρέθηκαν δεδομένα στο Firebase."); return; }
+                _applying=true;
+                if(data.exams&&data.exams.length)        { lsSet(LS.exams,data.exams);           setExams(data.exams); }
+                if(data.glucose&&data.glucose.length)    { lsSet(LS.glucose,data.glucose);       setGlucose(data.glucose); }
+                if(data.ketones&&data.ketones.length)    { lsSet(LS.ketones,data.ketones);       setKetones(data.ketones); }
+                if(data.supps&&data.supps.length)        { lsSet(LS.supps,data.supps);           setSupps(data.supps); }
+                if(data.suppLog&&data.suppLog.length)    { lsSet(LS.suppLog,data.suppLog);       setSuppLog(data.suppLog); }
+                if(data.meals&&data.meals.length)        { lsSet(LS.meals,data.meals);           setMeals(data.meals); }
+                if(data.exercises&&data.exercises.length){ lsSet(LS.exercises,data.exercises);   setExercises(data.exercises); }
+                if(data.foods&&data.foods.length)        { lsSet(LS.foods,data.foods);           setFoods(data.foods); }
+                if(data.settings)                        { lsSet(LS.settings,data.settings);     setSettings(data.settings); }
+                setFbStatus("synced"); setFbSyncedAt(new Date());
+                setTimeout(function(){ _applying=false; }, 1000);
+                setShowSync(false);
+                alert("✅ Κατέβηκαν τα δεδομένα!");
+              });
+            },
+            style:{background:"#eff6ff",color:"#2563eb",border:"2px solid #dbeafe",borderRadius:12,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:10}
+          },fbSyncing?"⏳...":"⬇️ Κατέβασμα ← Firebase"),
           React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}},
             React.createElement("button",{
               onClick:function(){
@@ -2752,7 +2800,7 @@ function App(){
     React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",color:"#fff",padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50,boxShadow:"0 2px 8px rgba(37,99,235,.3)"}},
       React.createElement("span",{style:{fontSize:24}},"🏥"),
       React.createElement("div",{style:{flex:1}},
-        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.2")),
+        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.4")),
         React.createElement("div",{style:{fontSize:12,opacity:.8}},exams.length+" εξετάσεις · "+supps.length+" συμπλ.")
       ),
       alertCount>0?React.createElement("div",{style:{background:"#ef4444",color:"#fff",borderRadius:99,width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}},alertCount):null,
@@ -2995,7 +3043,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 /* ═══════════════════ SERVICE WORKER ═══════════════════ */
 if('serviceWorker' in navigator) {
   var swCode = [
-    "const CACHE='ht-v3-8-2';",
+    "const CACHE='ht-v3-8-4';",
     "const URLS=['/'];",
     "self.addEventListener('install',e=>{",
     "  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));",
