@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=5.0,user-scalable=yes"/>
-<title>Health Tracker v3.8.5</title>
+<title>Health Tracker v3.8.6</title>
 <meta name="application-name" content="Health Tracker"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -104,12 +104,18 @@ function fbPullAll(cb){
   _fbDb.ref("users/"+_fbUid).once("value")
     .then(function(snap){
       var data=snap.val()||{};
-      /* Convert Firebase objects back to arrays */
       var result={};
       ["exams","glucose","ketones","supps","suppLog","foods","meals","exercises","exTemplates"].forEach(function(k){
         result[k] = data[k] ? Object.values(data[k]) : [];
       });
       result.settings = data.settings||{};
+      /* Write to localStorage immediately for persistence across reloads */
+      var lsKeys={exams:"ht3-exams",glucose:"ht3-glucose",ketones:"ht3-ketones",
+        supps:"ht3-supps",suppLog:"ht3-suppLog",foods:"ht3-foods",
+        meals:"ht3-meals",exercises:"ht3-exercises",exTemplates:"ht3-exTemplates",settings:"ht3-settings"};
+      Object.keys(lsKeys).forEach(function(k){
+        if(result[k]!==undefined) try{localStorage.setItem(lsKeys[k],JSON.stringify(result[k]));}catch(e){}
+      });
       if(cb) cb(null, result);
     })
     .catch(function(e){ if(cb) cb(e,null); });
@@ -694,15 +700,16 @@ function App(){
           fbPullAll(function(err2, data){
             if(err2||!data) return;
             _applying=true;
-            if(data.exams&&data.exams.length)       { lsSet(LS.exams,data.exams);           setExams(data.exams); }
-            if(data.glucose&&data.glucose.length)   { lsSet(LS.glucose,data.glucose);       setGlucose(data.glucose); }
-            if(data.ketones&&data.ketones.length)   { lsSet(LS.ketones,data.ketones);       setKetones(data.ketones); }
-            if(data.supps&&data.supps.length)       { lsSet(LS.supps,data.supps);           setSupps(data.supps); }
-            if(data.suppLog&&data.suppLog.length)   { lsSet(LS.suppLog,data.suppLog);       setSuppLog(data.suppLog); }
-            if(data.meals&&data.meals.length)       { lsSet(LS.meals,data.meals);           setMeals(data.meals); }
-            if(data.exercises&&data.exercises.length){ lsSet(LS.exercises,data.exercises); setExercises(data.exercises); }
-            if(data.foods&&data.foods.length)       { lsSet(LS.foods,data.foods);           setFoods(data.foods); }
-            if(data.settings)                       { lsSet(LS.settings,data.settings);     setSettings(data.settings); }
+            /* Update both localStorage AND React state */
+            if(data.exams&&data.exams.length)        { lsSet(LS.exams,data.exams);           setExams(data.exams); }
+            if(data.glucose&&data.glucose.length)    { lsSet(LS.glucose,data.glucose);       setGlucose(data.glucose); }
+            if(data.ketones&&data.ketones.length)    { lsSet(LS.ketones,data.ketones);       setKetones(data.ketones); }
+            if(data.supps&&data.supps.length)        { lsSet(LS.supps,data.supps);           setSupps(data.supps); }
+            if(data.suppLog&&data.suppLog.length)    { lsSet(LS.suppLog,data.suppLog);       setSuppLog(data.suppLog); }
+            if(data.meals&&data.meals.length)        { lsSet(LS.meals,data.meals);           setMeals(data.meals); }
+            if(data.exercises&&data.exercises.length){ lsSet(LS.exercises,data.exercises);   setExercises(data.exercises); }
+            if(data.foods&&data.foods.length)        { lsSet(LS.foods,data.foods);           setFoods(data.foods); }
+            if(data.settings)                        { lsSet(LS.settings,data.settings);     setSettings(data.settings); }
             if(window._fbSetStatus) window._fbSetStatus("synced");
             if(window._fbSetSyncedAt) window._fbSetSyncedAt(new Date());
             setTimeout(function(){ _applying=false; }, 1000);
@@ -2706,8 +2713,8 @@ function App(){
                 if(data.settings)                        { lsSet(LS.settings,data.settings);     setSettings(data.settings); }
                 setFbStatus("synced"); setFbSyncedAt(new Date());
                 setTimeout(function(){ _applying=false; }, 500);
-                alert("✅ Κατέβηκαν τα δεδομένα!");
-                setTimeout(function(){ window.location.reload(); }, 300);
+                setShowSync(false);
+                alert("✅ Κατέβηκαν τα δεδομένα! Αν δεν εμφανιστούν, κάνε refresh.");
               });
             },
             style:{background:"#eff6ff",color:"#2563eb",border:"2px solid #dbeafe",borderRadius:12,padding:"11px 16px",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:10}
@@ -2800,7 +2807,7 @@ function App(){
     React.createElement("div",{style:{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",color:"#fff",padding:"14px 18px 12px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50,boxShadow:"0 2px 8px rgba(37,99,235,.3)"}},
       React.createElement("span",{style:{fontSize:24}},"🏥"),
       React.createElement("div",{style:{flex:1}},
-        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.5")),
+        React.createElement("div",{style:{fontSize:16,fontWeight:700}},"Health Tracker ",React.createElement("span",{style:{fontSize:11,opacity:.7}},"v3.8.6")),
         React.createElement("div",{style:{fontSize:12,opacity:.8}},exams.length+" εξετάσεις · "+supps.length+" συμπλ.")
       ),
       alertCount>0?React.createElement("div",{style:{background:"#ef4444",color:"#fff",borderRadius:99,width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}},alertCount):null,
@@ -3043,7 +3050,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
 /* ═══════════════════ SERVICE WORKER ═══════════════════ */
 if('serviceWorker' in navigator) {
   var swCode = [
-    "const CACHE='ht-v3-8-5';",
+    "const CACHE='ht-v3-8-6';",
     "const URLS=['/'];",
     "self.addEventListener('install',e=>{",
     "  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(URLS)));",
